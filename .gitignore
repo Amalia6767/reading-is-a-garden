@@ -1,0 +1,13 @@
+# 秘密文件,永不上传 GitHub
+.env
+
+# 个人运行数据(每个人的花园和打卡是自己的)
+memory.json
+
+# Python 杂物
+__pycache__/
+*.pyc
+.venv/
+
+# macOS 杂物
+.DS_Store
