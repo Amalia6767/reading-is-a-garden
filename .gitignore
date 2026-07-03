@@ -3,6 +3,16 @@
 
 # 个人运行数据(每个人的花园和打卡是自己的)
 memory.json
+garden.html
+
+# 个人战略脑暴(求职/竞品/真名,暂不公开)
+research/
+
+# 设计灵感参考图(AI 情绪板,非源码;gif 较大)
+*.webp
+*.gif
+5a388fd0a4816163d9e7fd9ca0ee829c.jpg
+e95fa0908a9dd6e4d178458f2bcd5c1f.jpg
 
 # Python 杂物
 __pycache__/
