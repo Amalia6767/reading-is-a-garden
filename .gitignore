@@ -5,6 +5,9 @@
 memory.json
 garden.html
 
+# 种子箱:你自己丢进来的论文(可能有版权,永不上传)
+seeds/
+
 # 个人战略脑暴(求职/竞品/真名,暂不公开)
 research/
 
@@ -21,3 +24,9 @@ __pycache__/
 
 # macOS 杂物
 .DS_Store
+
+# 提取文本的缓存
+.cache/
+
+# 个人灵感笔记
+ideas

@@ -51,13 +51,18 @@ def load_plants():
     return plants
 
 
-def load_streak():
-    """从 memory.json 读打卡记录,算出连续天数。"""
+def load_memory():
+    """读 memory.json:打卡记录 + (未来的)自测通过记录。"""
     try:
         with open(MEMORY, encoding="utf-8") as f:
-            days = set(json.load(f).get("read_days", []))
+            return json.load(f)
     except (OSError, json.JSONDecodeError):
-        days = set()
+        return {}
+
+
+def load_streak(memory):
+    """从打卡记录算出连续天数。"""
+    days = set(memory.get("read_days", []))
     if not days:
         return 0, 0
     today = datetime.date.today()
@@ -69,13 +74,75 @@ def load_streak():
     return streak, len(days)
 
 
+# ---------------------------------------------------------------------------
+# 阅读经济:生长值全部来自"读"这个动作本身,时间不再是养分。
+#   破土 30%       —— 读完第一口,即时发芽(即时回报)
+#   小口 +30%/篇   —— 同一篇按口推进,读完最后一口拿满(一株花盛开 = 一篇真读完)
+#   生态 +6%/株    —— 你之后每再种一株,这株就长高一点(封顶 +24%)
+#   连读 +4%/天    —— 连续打卡是给全园浇水(封顶 +20%)
+#   自测 +12%      —— 费曼自测通过(钩子:memory.json 里记 quiz_passed 即生效)
+# 没读完的论文,生长封顶 62%——花苞半开,等你回来读完。手动浇灌只值 10%。
+# ---------------------------------------------------------------------------
+SPROUT, BITES_FULL, UNFINISHED_CAP = 0.30, 0.30, 0.62
+ECO_STEP, ECO_CAP = 0.06, 0.24
+STREAK_STEP, STREAK_CAP, QUIZ_BONUS = 0.04, 0.20, 0.12
+
+def feed_garden(plants, streak, memory):
+    """按阅读经济给每株植物算出生长值(readG)与来源明细。"""
+    n = len(plants)
+    streak_boost = min(STREAK_STEP * streak, STREAK_CAP)
+    quiz_passed = set(memory.get("quiz_passed", []))
+    seed_by_plant = {v.get("plant"): v for v in memory.get("seeds", {}).values()}
+    for i, p in enumerate(plants):
+        rec = seed_by_plant.get(p["file"])
+        if rec and rec.get("total", 0) > 0:              # 按口推进的植物
+            done, total = rec["done"], rec["total"]
+            bites = BITES_FULL * ((done - 1) / (total - 1)) if total > 1 else BITES_FULL
+            unfinished = done < total
+            p["prog"] = {"done": done, "total": total}
+        else:                                            # 切小口之前的老植物,按读完算
+            bites, unfinished, p["prog"] = BITES_FULL, False, None
+        eco = min(ECO_STEP * (n - 1 - i), ECO_CAP)       # 在它之后种下的每一株都在滋养它
+        quiz = QUIZ_BONUS if p["file"] in quiz_passed else 0.0
+        g = min(SPROUT + bites + eco + streak_boost + quiz, 1.0)
+        if unfinished:
+            g = min(g, UNFINISHED_CAP)                   # 没读完,不许盛开
+        p["readG"] = round(g, 4)
+        p["feed"] = {"bites": round(bites * 100), "eco": round(eco * 100),
+                     "streak": round(streak_boost * 100), "quiz": round(quiz * 100)}
+
+
+def seedbox_state(memory):
+    """种子箱现状:正在读哪篇、还差几口、几颗种子在等。写到花园的天上去。"""
+    seeds_dir = os.path.join(HERE, "seeds")
+    try:
+        files = sorted((f for f in os.listdir(seeds_dir)
+                        if not f.startswith(".") and f.lower().endswith((".pdf", ".txt", ".md"))),
+                       key=lambda f: os.path.getmtime(os.path.join(seeds_dir, f)))
+    except OSError:
+        files = []
+    st = memory.get("seeds", {})
+    reading = None
+    for f in files:
+        rec = st.get(f)
+        if rec and 0 < rec["done"] < rec["total"]:
+            reading = {"title": os.path.splitext(f)[0][:40],
+                       "done": rec["done"], "total": rec["total"]}
+            break
+    waiting = sum(1 for f in files if st.get(f, {}).get("done", 0) == 0)
+    return {"reading": reading, "waiting": waiting}
+
+
 def grow():
     plants = load_plants()
-    streak, total_days = load_streak()
+    memory = load_memory()
+    streak, total_days = load_streak(memory)
+    feed_garden(plants, streak, memory)
     data = {
         "plants": plants,
         "streak": streak,
         "totalDays": total_days,
+        "seedbox": seedbox_state(memory),
         "generated": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
     }
     payload = json.dumps(data, ensure_ascii=False).replace("</", "<\\/")
@@ -83,7 +150,7 @@ def grow():
     with open(OUT, "w", encoding="utf-8") as f:
         f.write(html)
     print(f"🌗 昼夜花园已生成: {OUT}")
-    print(f"   {len(plants)} 株植物 · 连续 {streak} 天 · 光照随本地时间流转")
+    print(f"   {len(plants)} 株植物 · 连续 {streak} 天 · 阅读是唯一的主养分")
     if "open" in sys.argv[1:]:
         os.system(f'open "{OUT}"')
     else:
@@ -272,6 +339,7 @@ TEMPLATE = r"""<!DOCTYPE html>
   <div class="streak">连续 <b id="streakN">0</b> 天</div>
   <div class="label" id="plantCount"></div>
   <div class="label" id="clockLine"></div>
+  <div class="label" id="nextLine" style="opacity:.75"></div>
 </div>
 
 <div class="hud" id="hint">
@@ -333,7 +401,9 @@ if(DEMO){
     const daysAgo=2+Math.floor(drnd()*80);
     const ts=Date.now()-daysAgo*864e5;
     DATA.plants.push({title:tt, file:'(演示)', md:demoMd, ts,
-                      date:new Date(ts).toISOString().slice(0,10)});
+                      date:new Date(ts).toISOString().slice(0,10),
+                      readG:+(0.5+drnd()*0.5).toFixed(3),   // 演示:假装读得很勤
+                      feed:{bites:30,eco:24,streak:20,quiz:0}, prog:null});
   }
   DATA.plants.sort((a,b)=>a.ts-b.ts);
 }
@@ -721,9 +791,10 @@ function makePlant(rec,i,n){
   crnd();crnd();crnd();
   const pal=PALETTE[ crnd()<0.07 ? 5 : Math.floor(crnd()*5) ];
   const days=Math.max(0,(Date.now()-rec.ts)/864e5);
-  // 生长 = 时间的馈赠(baseG) + 你亲手浇灌的光(bonus,长按积累,持久保存)
-  const baseG=clamp(0.42+Math.log2(1+days)*0.11,0.42,0.88);
-  const bonus=clamp(BONUS[rec.title]||0,0,0.5);
+  // 生长 = 阅读经济(readG,由 Python 按"破土+生态+连读+自测"算出)+ 手动微光(封顶10%)
+  const baseG=rec.readG!=null ? rec.readG
+             : clamp(0.42+Math.log2(1+days)*0.11,0.42,0.88);   // 演示植物的后备公式
+  const bonus=clamp(BONUS[rec.title]||0,0,0.10);
   const growth=clamp(baseG+bonus,0,1);
   const depth=0.78+rnd()*0.38;
   const segs=6+Math.floor(rnd()*3);
@@ -780,8 +851,8 @@ function drawPlant(p,t){
   // —— 浇灌:注入光 = 真实生长。长按时生长值上涨并持久保存
   if(mouse.down && Math.min(dTip,dBase)<lantern.r*0.7 && !reader.classList.contains('on')){
     p.nourish=clamp(p.nourish+0.016,0,1);
-    if(p.bonus<Math.min(0.5,1-p.baseG)){
-      p.bonus=Math.min(p.bonus+0.0011,0.5,1-p.baseG);
+    if(p.bonus<Math.min(0.10,1-p.baseG)){
+      p.bonus=Math.min(p.bonus+0.0011,0.10,1-p.baseG);
       BONUS[p.rec.title]=+p.bonus.toFixed(4);
       if((frameN%80)===0) saveBonus();
     }
@@ -1017,10 +1088,10 @@ function drawPlant(p,t){
     ctx.fillStyle=`hsla(${hue},90%,88%,${p.nourish})`;
     ctx.font='600 9px "SF Mono",Menlo,monospace'; ctx.textAlign='center';
     ctx.fillText(`${Math.round(clamp(p.gCur,0,1)*100)}%`, ux, uy+3);
-    const full=p.bonus>=Math.min(0.5,1-p.baseG)-0.001;
+    const full=p.bonus>=Math.min(0.10,1-p.baseG)-0.001;
     ctx.font='300 8px "PingFang SC",sans-serif';
     ctx.fillStyle=`hsla(${hue},80%,84%,${p.nourish*0.8})`;
-    ctx.fillText(full?(p.gCur>=0.97?'满冠 ✦':'今日养分已满 · 读下一篇吧'):'注入光 ↑', ux, uy+R2+12);
+    ctx.fillText(full?(p.gCur>=0.97?'满冠 ✦':'光只是微光 · 读下一篇它才会再长'):'注入光 ↑', ux, uy+R2+12);
     ctx.globalCompositeOperation='source-over';
   }
 
@@ -1034,8 +1105,10 @@ function drawPlant(p,t){
     ctx.fillStyle=css(ink,la2*0.9);
     ctx.fillText((p.gCur>=0.97?'✦ ':'')+name.toUpperCase(), p.tip.x, ly2);
     ctx.fillStyle=`hsla(${hue},70%,${lerp(45,75,ENV.dark)}%,${la2*0.75})`;
-    ctx.font='300 9px "Avenir Next",sans-serif';
-    ctx.fillText(`№ ${String(p.i+1).padStart(3,'0')} · ${p.rec.date} · 长按浇灌 · 点击展开`, p.tip.x, ly2+15);
+    ctx.font='300 9px "Avenir Next","PingFang SC",sans-serif';
+    const pg=p.rec.prog;
+    const tail=(pg&&pg.done<pg.total)?`第 ${pg.done}/${pg.total} 口 · 读完才盛开`:'长按浇灌 · 点击展开';
+    ctx.fillText(`№ ${String(p.i+1).padStart(3,'0')} · ${p.rec.date} · ${tail}`, p.tip.x, ly2+15);
   }
 }
 
@@ -1220,7 +1293,13 @@ function openReader(p){
   document.querySelector('#co-species .v').innerHTML=`<i>${p.species}</i><br>${p.pal.name} · HUE ${Math.round(p.hue)}°`;
   document.querySelector('#co-bloom .v').textContent=
     `${p.bloomType==='orb'?'16 FILAMENTS':p.petals+' PETALS'} · ${p.bloomType.toUpperCase()}`;
-  document.querySelector('#co-growth .v').textContent=`${Math.round(p.growth*100)}% · DAY ${p.days}`;
+  const fd=p.rec.feed, pg=p.rec.prog;
+  document.querySelector('#co-growth .v').textContent = fd
+    ? `${Math.round(p.growth*100)}% = 破土30 + 小口${fd.bites} + 生态${fd.eco} + 连读${fd.streak}`
+      +(fd.quiz?` + 自测${fd.quiz}`:'')+(p.bonus>0.005?` + 光${Math.round(p.bonus*100)}`:'')
+    : `${Math.round(p.growth*100)}% · DAY ${p.days}`;
+  reader.querySelector('.meta').textContent=`${p.rec.file}`
+    +(pg?(pg.done<pg.total?` · 已读 ${pg.done}/${pg.total} 口`:' · 已读完 ✦'):'');
   document.querySelector('#co-planted .v').textContent=`${p.rec.date} · ${DATA.streak} DAY STREAK`;
   reader.querySelector('.md').innerHTML=mdToHtml(p.rec.md);
   reader.classList.add('on');
@@ -1427,6 +1506,15 @@ function initHud(){
     DEMO ? `${n} 株植物 · 演示模式` : `${n} 株植物 · ${DATA.totalDays} 个阅读日`;
   document.getElementById('subline').textContent=`你读过的每一篇，都在这里生长`;
   if(n===0) document.getElementById('empty').style.display='block';
+  // 把"回来的理由"写在天上:正在读的还差几口、种子箱里几颗种子在等
+  const sb=DATA.seedbox||{};
+  let nxt='再读一篇 全园+6% · 明天回来 +4%';
+  if(sb.reading){
+    const tt=sb.reading.title.length>12?sb.reading.title.slice(0,12)+'…':sb.reading.title;
+    nxt=`《${tt}》还差 ${sb.reading.total-sb.reading.done} 口`
+        +(sb.waiting?` · 种子箱 ${sb.waiting} 颗`:'');
+  } else if(sb.waiting) nxt=`种子箱有 ${sb.waiting} 颗种子,等你来读`;
+  if(n>0||sb.waiting) document.getElementById('nextLine').textContent=nxt;
   updateClock();
   setInterval(updateClock,30000);
 }
