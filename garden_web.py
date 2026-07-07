@@ -311,6 +311,46 @@ TEMPLATE = r"""<!DOCTYPE html>
   .md th, .md td { padding: .6em .9em; border-bottom: 1px solid rgba(255,255,255,.08); }
   .md a { color: hsla(var(--hue),75%,75%,1); text-decoration: none; border-bottom: 1px dotted hsla(var(--hue),60%,65%,.5); }
 
+  /* ===== 白昼标本页:浅色植物图鉴纸(随时间自动切换,夜晚保持深色) ===== */
+  #reader.day .veil { background: rgba(206,214,206,.5); }
+  #reader.day .panel { background: linear-gradient(165deg, rgba(250,250,244,.96), rgba(239,242,234,.97));
+    border-color: hsla(var(--hue),45%,50%,.35);
+    box-shadow: 0 40px 120px rgba(40,50,40,.26), 0 0 90px hsla(var(--hue),70%,55%,.12); }
+  #reader.day .corner { border-color: hsla(var(--hue),55%,42%,.6); }
+  #reader.day .sheet-head { border-bottom-color: hsla(var(--hue),40%,45%,.26); }
+  #reader.day .sheet-head .no { color: hsla(var(--hue),60%,40%,.9); }
+  #reader.day .sheet-head .title { color: #242b1d; }
+  #reader.day .sheet-head .meta { color: rgba(92,102,82,.72); }
+  #reader.day .sheet-head .close { border-color: rgba(40,50,30,.25);
+    background: rgba(255,255,255,.42); color: rgba(52,62,42,.82); }
+  #reader.day .sheet-head .close:hover { background: hsla(var(--hue),60%,55%,.25);
+    border-color: hsla(var(--hue),60%,45%,.5); }
+  #reader.day .spec { border-right-color: hsla(var(--hue),40%,45%,.22);
+    background:
+      radial-gradient(ellipse 90% 60% at 50% 42%, hsla(var(--hue),60%,55%,.12), transparent 70%),
+      repeating-linear-gradient(0deg, transparent 0 47px, hsla(var(--hue),40%,40%,.06) 47px 48px),
+      repeating-linear-gradient(90deg, transparent 0 47px, hsla(var(--hue),40%,40%,.06) 47px 48px); }
+  #reader.day .spec svg line { stroke: hsla(var(--hue),55%,38%,.55); }
+  #reader.day .spec svg circle { stroke: hsla(var(--hue),60%,36%,.85); }
+  #reader.day .callout { background: rgba(255,255,255,.6); border-left-color: hsla(var(--hue),55%,45%,.7); }
+  #reader.day .callout .k { color: hsla(var(--hue),50%,38%,.82); }
+  #reader.day .callout .v { color: rgba(46,56,40,.92); }
+  #reader.day .callout .v i { color: hsla(var(--hue),65%,36%,1); }
+  #reader.day .k-head { color: hsla(var(--hue),55%,38%,.85); border-bottom-color: hsla(var(--hue),40%,45%,.22); }
+  #reader.day .md { color: rgba(48,56,42,.94); }
+  #reader.day .md h1, #reader.day .md h2, #reader.day .md h4 { color: #242b1c; }
+  #reader.day .md h3 { color: hsla(var(--hue),58%,34%,.95); }
+  #reader.day .md strong { color: hsla(var(--hue),68%,36%,1); }
+  #reader.day .md em { color: rgba(32,40,28,.95); }
+  #reader.day .md blockquote { border-left-color: hsla(var(--hue),55%,48%,.5); color: rgba(82,94,68,.9); }
+  #reader.day .md code { color: hsla(var(--hue),70%,32%,1); background: hsla(var(--hue),45%,45%,.13); }
+  #reader.day .md pre { background: rgba(244,246,236,.92); border-color: rgba(0,0,0,.08); }
+  #reader.day .md pre code { color: rgba(52,62,46,.9); }
+  #reader.day .md th { color: hsla(var(--hue),58%,34%,.95); }
+  #reader.day .md th, #reader.day .md td { border-bottom-color: rgba(0,0,0,.1); }
+  #reader.day .md a { color: hsla(var(--hue),68%,36%,1); border-bottom-color: hsla(var(--hue),55%,45%,.5); }
+  #reader.day .knowledge::-webkit-scrollbar-thumb { background: hsla(var(--hue),45%,45%,.35); }
+
   @media (max-width: 860px) {
     #brand { left: 24px; top: 24px; } #stats { right: 24px; top: 26px; }
     #brand .zh { font-size: 20px; } #hint { display: none; }
@@ -439,9 +479,9 @@ const SKY_KEYS=[
   {h:0,   dark:1,   top:[2,3,8],      mid:[6,11,30],    hor:[12,27,56],   mist:[24,80,100]},
   {h:4.6, dark:1,   top:[2,3,8],      mid:[6,11,30],    hor:[12,27,56],   mist:[24,80,100]},
   {h:6.3, dark:.72, top:[22,26,58],   mid:[70,58,96],   hor:[228,142,96], mist:[195,115,95]},
-  {h:8.5, dark:.14, top:[86,116,156], mid:[136,160,190],hor:[204,211,209],mist:[205,215,212]},
-  {h:13,  dark:.05, top:[95,130,170], mid:[146,170,200],hor:[212,218,220],mist:[216,222,224]},
-  {h:17.3,dark:.2,  top:[68,92,132],  mid:[122,132,168],hor:[224,184,148],mist:[220,180,150]},
+  {h:8.5, dark:.14, top:[78,142,206], mid:[148,190,226],hor:[228,224,202],mist:[230,226,204]},
+  {h:13,  dark:.05, top:[84,152,218], mid:[150,197,233],hor:[230,236,226],mist:[238,242,232]},
+  {h:17.3,dark:.2,  top:[74,118,178], mid:[150,168,196],hor:[234,192,150],mist:[226,188,150]},
   {h:19.4,dark:.72, top:[26,22,52],   mid:[88,52,84],   hor:[232,120,72], mist:[205,105,75]},
   {h:21.4,dark:1,   top:[2,3,8],      mid:[6,11,30],    hor:[12,27,56],   mist:[24,80,100]},
   {h:24,  dark:1,   top:[2,3,8],      mid:[6,11,30],    hor:[12,27,56],   mist:[24,80,100]},
@@ -461,13 +501,18 @@ const cv=document.getElementById('garden'), ctx=cv.getContext('2d');
 let W=0,H=0,DPR=1;
 function resize(){ DPR=Math.min(devicePixelRatio||1,2);
   W=innerWidth; H=innerHeight; cv.width=W*DPR; cv.height=H*DPR;
-  ctx.setTransform(DPR,0,0,DPR,0,0); buildStars(); layoutPlants(); }
+  ctx.setTransform(DPR,0,0,DPR,0,0); buildStars(); layoutPlants();
+  if(clouds.length) buildClouds(); }
 addEventListener('resize',()=>{ resize(); if(reader.classList.contains('on')) sizeSpec(); });
 
 /* ================= 输入:提灯 ================= */
 const mouse={x:innerWidth/2,y:innerHeight*0.62,vx:0,vy:0,down:false,downAt:0,moved:0};
 const lantern={x:innerWidth/2,y:innerHeight*0.62,r:240};
 let wind=0, PARX=0, frameN=0;   // PARX: 裸眼3D视差量(随提灯位置)
+// 电影镜头:点花时相机俯冲扎进那朵花,关闭时拉回。rest=identity(cx=W/2,cy=H/2,s=1)
+const cam={cx:innerWidth/2, cy:innerHeight/2, s:1, tcx:innerWidth/2, tcy:innerHeight/2, ts:1, on:false};
+const DIVE=2.75;                // 俯冲到多近
+let camP=0;                     // 0→1 俯冲进度,驱动提灯淡出等
 addEventListener('pointermove',e=>{
   mouse.vx=e.clientX-mouse.x; mouse.vy=e.clientY-mouse.y;
   mouse.x=e.clientX; mouse.y=e.clientY;
@@ -500,6 +545,7 @@ function drawSky(t){
   const mg=ctx.createRadialGradient(mx,H*0.62,0,mx,H*0.62,W*0.42);
   mg.addColorStop(0,css(ENV.mist,0.12+0.08*ENV.dark)); mg.addColorStop(1,css(ENV.mist,0));
   ctx.fillStyle=mg; ctx.fillRect(0,0,W,H);
+  drawClouds(t);   // 白昼的云(夜里自动隐去)
   // 星星只在黑暗里
   if(ENV.dark>0.05){
     for(const s of stars){
@@ -510,21 +556,60 @@ function drawSky(t){
   }
 }
 
+/* ================= 白昼的云 ================= */
+let clouds=[];
+function buildClouds(){
+  clouds=[]; const rnd=mulberry32(4242);
+  for(let i=0;i<7;i++){
+    const puffs=[], np=3+Math.floor(rnd()*4);
+    for(let k=0;k<np;k++) puffs.push({dx:(rnd()-0.5)*170, dy:(rnd()-0.5)*24, r:24+rnd()*42});
+    clouds.push({xf:rnd(), y:H*(0.08+rnd()*0.32), sp:0.004+rnd()*0.009,
+                 scale:0.65+rnd()*0.95, puffs});
+  }
+}
+function drawClouds(t){
+  const day=1-ENV.dark; if(day<0.06) return;
+  for(const c of clouds){
+    const x=((c.xf*W + t*c.sp) % (W+420)) - 210;
+    for(const p of c.puffs){
+      const px=x+p.dx*c.scale, py=c.y+p.dy*c.scale, r=p.r*c.scale;
+      let g=ctx.createRadialGradient(px,py+r*0.15,0,px,py+r*0.15,r);   // 底部淡青影
+      g.addColorStop(0,`rgba(200,212,230,${0.4*day})`); g.addColorStop(1,'rgba(200,212,230,0)');
+      ctx.fillStyle=g; ctx.beginPath(); ctx.arc(px,py+r*0.1,r,0,6.29); ctx.fill();
+      g=ctx.createRadialGradient(px,py-r*0.25,0,px,py-r*0.1,r*0.95);   // 顶部阳光亮面
+      g.addColorStop(0,`rgba(255,255,255,${0.96*day})`);
+      g.addColorStop(0.7,`rgba(250,252,255,${0.34*day})`); g.addColorStop(1,'rgba(250,252,255,0)');
+      ctx.fillStyle=g; ctx.beginPath(); ctx.arc(px,py-r*0.08,r*0.95,0,6.29); ctx.fill();
+    }
+  }
+}
+
 /* ================= 日月沿弧线运行 ================= */
 function arcPos(f){ return {x:W*(0.14+0.72*f), y:H*0.72-Math.sin(f*Math.PI)*H*0.52}; }
-function drawCelestial(){
+function drawCelestial(t){
   const hr=ENV.hr;
   // 太阳: 6→18 点划过天空
   const sf=(hr-6)/12;
   if(sf>-0.05 && sf<1.05 && ENV.dark<0.9){
     const {x,y}=arcPos(clamp(sf,0,1)); const a=(1-ENV.dark);
     ctx.globalCompositeOperation='lighter';
-    const halo=ctx.createRadialGradient(x,y,0,x,y,150);
-    halo.addColorStop(0,`rgba(255,235,190,${0.5*a})`); halo.addColorStop(1,'transparent');
-    ctx.fillStyle=halo; ctx.beginPath(); ctx.arc(x,y,150,0,6.29); ctx.fill();
+    const halo=ctx.createRadialGradient(x,y,0,x,y,270);       // 更大更柔的暖光晕
+    halo.addColorStop(0,`rgba(255,241,208,${0.5*a})`);
+    halo.addColorStop(0.4,`rgba(255,227,172,${0.16*a})`); halo.addColorStop(1,'transparent');
+    ctx.fillStyle=halo; ctx.beginPath(); ctx.arc(x,y,270,0,6.29); ctx.fill();
+    ctx.save(); ctx.translate(x,y); ctx.rotate(t*0.00002);    // 柔和放射的光芒
+    for(let k=0;k<12;k++){ ctx.rotate(6.283/12);
+      const rg=ctx.createLinearGradient(0,0,0,-200);
+      rg.addColorStop(0,`rgba(255,245,216,${0.09*a})`); rg.addColorStop(1,'transparent');
+      ctx.fillStyle=rg; ctx.beginPath();
+      ctx.moveTo(-10,0); ctx.lineTo(10,0); ctx.lineTo(0,-200); ctx.closePath(); ctx.fill();
+    }
+    ctx.restore();
     ctx.globalCompositeOperation='source-over';
-    ctx.fillStyle=`rgba(255,246,224,${0.95*a})`;
-    ctx.beginPath(); ctx.arc(x,y,22,0,6.29); ctx.fill();
+    const core=ctx.createRadialGradient(x,y,0,x,y,26);        // 日核带暖边
+    core.addColorStop(0,`rgba(255,253,242,${0.98*a})`);
+    core.addColorStop(0.7,`rgba(255,244,216,${0.95*a})`); core.addColorStop(1,`rgba(255,231,186,${0.5*a})`);
+    ctx.fillStyle=core; ctx.beginPath(); ctx.arc(x,y,24,0,6.29); ctx.fill();
   }
   // 月亮: 18→6 点值夜
   const mf=(hr>=18?hr-18:hr+6)/12;
@@ -545,13 +630,26 @@ function drawCelestial(){
 /* ================= 大地 ================= */
 function groundY(x){ return H*0.80 + Math.sin(x*0.0015+1.7)*H*0.014 + Math.sin(x*0.004)*H*0.007; }
 function drawGround(){
-  const top=mixc([88,102,84],[10,20,36],ENV.dark), bot=mixc([44,56,46],[5,10,20],ENV.dark);
+  const day=1-ENV.dark;
+  const top=mixc([98,132,86],[10,20,36],ENV.dark), bot=mixc([54,78,52],[5,10,20],ENV.dark);
   ctx.beginPath(); ctx.moveTo(0,H);
   for(let x=0;x<=W;x+=16) ctx.lineTo(x,groundY(x));
   ctx.lineTo(W,H); ctx.closePath();
   const g=ctx.createLinearGradient(0,H*0.76,0,H);
   g.addColorStop(0,css(top)); g.addColorStop(1,css(bot));
   ctx.fillStyle=g; ctx.fill();
+  // 白昼:地平线一抹被阳光照亮的嫩绿草甸
+  if(day>0.06){
+    ctx.save();
+    ctx.beginPath(); ctx.moveTo(0,H);
+    for(let x=0;x<=W;x+=16) ctx.lineTo(x,groundY(x));
+    ctx.lineTo(W,H); ctx.closePath(); ctx.clip();
+    const bt=groundY(W*0.5);
+    const bg=ctx.createLinearGradient(0,bt-6,0,bt+170);
+    bg.addColorStop(0,`rgba(190,222,150,${0.55*day})`); bg.addColorStop(1,'rgba(190,222,150,0)');
+    ctx.fillStyle=bg; ctx.fillRect(0,bt-50,W,240);
+    ctx.restore();
+  }
 }
 let blades=[];
 function buildBlades(){
@@ -994,7 +1092,7 @@ function drawPlant(p,t){
     ctx.globalCompositeOperation='source-over';
   }
   ctx.globalCompositeOperation=ENV.dark>0.45?'lighter':'source-over';
-  const dayBoost=(1-ENV.dark)*0.28;   // 白昼花瓣更实,补偿失去的辉光
+  const dayBoost=(1-ENV.dark)*0.42;   // 白昼花瓣更实,补偿失去的辉光
   if(budF>0.05){
   if(p.bloomType==='orb'){
     // 光球:一圈发光的细丝,像蒲公英种子做的灯
@@ -1249,9 +1347,12 @@ function drawFog(t){
 
 /* ================= 提灯 ================= */
 function drawLantern(t){
-  lantern.x=lerp(lantern.x,mouse.x,0.09);
-  lantern.y=lerp(lantern.y,mouse.y,0.09);
-  const k=0.3+0.7*ENV.dark;   // 白昼提灯只是柔柔一点暖
+  if(!reader.classList.contains('on')){    // 阅读时提灯定住不追鼠标
+    lantern.x=lerp(lantern.x,mouse.x,0.09);
+    lantern.y=lerp(lantern.y,mouse.y,0.09);
+  }
+  const k=(0.3+0.7*ENV.dark)*(1-camP);   // 俯冲时提灯淡出,让位给镜头
+  if(k<=0.001) return;
   const breathe=1+Math.sin(t*0.0022)*0.05+(mouse.down?0.22:0);
   const R=lantern.r*breathe;
   ctx.globalCompositeOperation='lighter';
@@ -1268,9 +1369,15 @@ function drawLantern(t){
 
 /* ================= 知识标本页 ================= */
 const reader=document.getElementById('reader');
-let specPlant=null, specRun=false;
+let specPlant=null, specRun=false, specDay=null;
 const specCv=document.getElementById('spec'), specCtx=specCv.getContext('2d');
 let specW=0, specH=0;
+
+// 标本页的明暗跟随环境时间:白昼=浅色图鉴纸,夜晚=深色。跨过临界才切,避免抖动。
+function setReaderTheme(){
+  const day = ENV && ENV.dark < 0.5;
+  if(day!==specDay){ specDay=day; reader.classList.toggle('day', day); }
+}
 
 function tryOpen(x,y){
   let best=null,bd=130;
@@ -1284,6 +1391,7 @@ function tryOpen(x,y){
 }
 function openReader(p){
   specPlant=p;
+  setReaderTheme();
   reader.style.setProperty('--hue',Math.round(p.hue));
   const fx=reader.querySelector('.bloomfx');
   fx.style.left=(p.tip.x||innerWidth/2)+'px'; fx.style.top=(p.tip.y||innerHeight/2)+'px';
@@ -1302,15 +1410,19 @@ function openReader(p){
     +(pg?(pg.done<pg.total?` · 已读 ${pg.done}/${pg.total} 口`:' · 已读完 ✦'):'');
   document.querySelector('#co-planted .v').textContent=`${p.rec.date} · ${DATA.streak} DAY STREAK`;
   reader.querySelector('.md').innerHTML=mdToHtml(p.rec.md);
+  // 相机俯冲扎进这朵花;阅读页在冲到花前的一刻才浮现,所以先看见花园被推近
+  cam.tcx=p.tip.x||W/2; cam.tcy=p.tip.y||H/2; cam.ts=DIVE; cam.on=true;
   reader.classList.add('on');
-  requestAnimationFrame(()=>requestAnimationFrame(()=>{ reader.classList.add('show');
-    sizeSpec(); specRun=true; requestAnimationFrame(specLoop); }));
   reader.querySelector('.knowledge').scrollTop=0;
+  clearTimeout(openReader._tm);
+  openReader._tm=setTimeout(()=>{ reader.classList.add('show');
+    sizeSpec(); specRun=true; requestAnimationFrame(specLoop); }, 430);
 }
 function closeReader(){
-  specRun=false;
   reader.classList.remove('show');
-  setTimeout(()=>reader.classList.remove('on'),650);
+  cam.ts=1; cam.tcx=W/2; cam.tcy=H/2; cam.on=false;   // 镜头拉回原处,花园重新铺开
+  clearTimeout(openReader._tm);
+  setTimeout(()=>{ specRun=false; reader.classList.remove('on'); },600);
 }
 reader.querySelector('.veil').addEventListener('click',closeReader);
 reader.querySelector('.close').addEventListener('click',closeReader);
@@ -1350,17 +1462,18 @@ function layoutSpecLines(){
 }
 function specLoop(t){
   if(!specRun) return;
+  setReaderTheme();            // 阅读时若跨过昼夜临界,标本页也随之切换
   drawSpecimen(specPlant,t);
   requestAnimationFrame(specLoop);
 }
 function drawSpecimen(p,t){
-  const c=specCtx, w=specW, h=specH;
+  const c=specCtx, w=specW, h=specH, day=specDay===true;
   c.clearRect(0,0,w,h);
   const hue=p.hue;
   const cx=w*0.5, cy=h*0.32;
   const R=Math.min(w,h)*0.17*(1+0.05*Math.sin(t*0.0008));
-  // 测量环 + 刻度:图鉴的仪器感
-  c.strokeStyle=`hsla(${hue},55%,72%,.22)`; c.lineWidth=1;
+  // 测量环 + 刻度:图鉴的仪器感(白昼用深墨线,夜里用浅荧光线)
+  c.strokeStyle=`hsla(${hue},55%,${day?40:72}%,${day?.34:.22})`; c.lineWidth=1;
   c.setLineDash([3,5]);
   c.beginPath(); c.arc(cx,cy,R*1.75,0,6.29); c.stroke();
   c.setLineDash([]);
@@ -1392,18 +1505,19 @@ function drawSpecimen(p,t){
     c.quadraticCurveTo(lx+(ex-lx)*0.5-px, ly+(ey-ly)*0.5-py, lx,ly);
     c.fill();
   }
-  // 花冠:双层花瓣,全开状态
+  // 花冠:双层花瓣,全开状态。白昼画成实体水彩标本,夜里画成发光体。
   const rot=t*0.00005+p.ph;
-  c.save(); c.translate(cx+sway*0.6,cy); c.globalCompositeOperation='lighter';
+  c.save(); c.translate(cx+sway*0.6,cy);
+  c.globalCompositeOperation = day ? 'source-over' : 'lighter';
   if(p.bloomType==='orb'){
     // 光球标本:细丝球全开
-    c.lineWidth=1;
+    c.lineWidth=day?1.2:1;
     for(let k=0;k<22;k++){
       const a=rot*2+k*Math.PI*2/22, L=R*1.45*(0.85+0.15*Math.sin(t*0.002+k));
       const ex=Math.cos(a)*L, ey=Math.sin(a)*L;
-      c.strokeStyle=`hsla(${hue},85%,80%,.4)`;
+      c.strokeStyle=day?`hsla(${hue},60%,48%,.6)`:`hsla(${hue},85%,80%,.4)`;
       c.beginPath(); c.moveTo(0,0); c.lineTo(ex,ey); c.stroke();
-      c.fillStyle=`hsla(${hue},95%,86%,.85)`;
+      c.fillStyle=day?`hsla(${hue},75%,44%,.95)`:`hsla(${hue},95%,86%,.85)`;
       c.beginPath(); c.arc(ex,ey,1.6,0,6.29); c.fill();
     }
   } else {
@@ -1418,34 +1532,47 @@ function drawSpecimen(p,t){
         const wdt=ring.L*ring.wf;
         const nx=Math.cos(a+Math.PI/2)*wdt, ny=Math.sin(a+Math.PI/2)*wdt;
         const grad=c.createLinearGradient(0,0,px2,py2);
-        grad.addColorStop(0,`hsla(${hue},90%,74%,${0.10*ring.al})`);
-        grad.addColorStop(1,`hsla(${hue},95%,82%,${0.5*ring.al})`);
+        if(day){   // 实体花瓣:瓣基浅、瓣尖浓,像水彩
+          grad.addColorStop(0,`hsla(${hue},68%,72%,${0.9*ring.al})`);
+          grad.addColorStop(1,`hsla(${hue},76%,47%,${0.98*ring.al})`);
+        } else {   // 发光花瓣
+          grad.addColorStop(0,`hsla(${hue},90%,74%,${0.10*ring.al})`);
+          grad.addColorStop(1,`hsla(${hue},95%,82%,${0.5*ring.al})`);
+        }
         c.fillStyle=grad;
         c.beginPath(); c.moveTo(0,0);
         c.quadraticCurveTo(px2*0.5+nx,py2*0.5+ny, px2,py2);
         c.quadraticCurveTo(px2*0.5-nx,py2*0.5-ny, 0,0);
         c.fill();
-        if(isLily){ c.fillStyle=`hsla(${hue},100%,88%,.8)`;
+        if(isLily){ c.fillStyle=day?`hsla(${hue},80%,42%,.9)`:`hsla(${hue},100%,88%,.8)`;
           c.beginPath(); c.arc(px2,py2,1.6,0,6.29); c.fill(); }
       }
     }
   }
-  const core=c.createRadialGradient(0,0,0,0,0,R*1.4);
-  core.addColorStop(0,`hsla(${hue},100%,90%,.9)`);
-  core.addColorStop(0.25,`hsla(${hue},95%,72%,.35)`);
-  core.addColorStop(1,'transparent');
-  c.fillStyle=core; c.beginPath(); c.arc(0,0,R*1.4,0,6.29); c.fill();
-  for(let k=0;k<5;k++){
-    const oa=t*0.001*(k%2?1:-1)+k*1.3;
-    c.fillStyle=`hsla(${hue},100%,86%,.7)`;
-    c.beginPath(); c.arc(Math.cos(oa)*R*1.45,Math.sin(oa)*R*0.9,1.4,0,6.29); c.fill();
+  // 花心
+  if(day){
+    const core=c.createRadialGradient(0,0,0,0,0,R*0.62);
+    core.addColorStop(0,`hsla(${(hue+35)%360},85%,60%,.95)`);   // 一点暖色花蕊
+    core.addColorStop(1,`hsla(${hue},70%,50%,0)`);
+    c.fillStyle=core; c.beginPath(); c.arc(0,0,R*0.62,0,6.29); c.fill();
+  } else {
+    const core=c.createRadialGradient(0,0,0,0,0,R*1.4);
+    core.addColorStop(0,`hsla(${hue},100%,90%,.9)`);
+    core.addColorStop(0.25,`hsla(${hue},95%,72%,.35)`);
+    core.addColorStop(1,'transparent');
+    c.fillStyle=core; c.beginPath(); c.arc(0,0,R*1.4,0,6.29); c.fill();
+    for(let k=0;k<5;k++){
+      const oa=t*0.001*(k%2?1:-1)+k*1.3;
+      c.fillStyle=`hsla(${hue},100%,86%,.7)`;
+      c.beginPath(); c.arc(Math.cos(oa)*R*1.45,Math.sin(oa)*R*0.9,1.4,0,6.29); c.fill();
+    }
   }
   c.restore(); c.globalCompositeOperation='source-over';
-  // 缓缓上升的孢子
+  // 缓缓飘动的孢子/花粉
   if(Math.random()<0.2) specSpores.push({x:cx+(Math.random()-0.5)*R*2,y:cy+Math.random()*h*0.3,life:1});
-  c.globalCompositeOperation='lighter';
+  c.globalCompositeOperation = day ? 'source-over' : 'lighter';
   for(const s of specSpores){ s.y-=0.5; s.life-=0.008;
-    c.fillStyle=`hsla(${hue},90%,80%,${s.life*0.5})`;
+    c.fillStyle=day?`hsla(${hue},50%,52%,${s.life*0.4})`:`hsla(${hue},90%,80%,${s.life*0.5})`;
     c.beginPath(); c.arc(s.x,s.y,1.1,0,6.29); c.fill(); }
   specSpores=specSpores.filter(s=>s.life>0);
   c.globalCompositeOperation='source-over';
@@ -1535,10 +1662,19 @@ function frame(t){
   const dt=Math.min(50,t-last); last=t; frameN++;
   ENV=envAt(hourNow());
   wind=Math.max(0.25,wind*0.985);
-  PARX=lantern.x-W/2;   // 裸眼3D:所有景深层随提灯反向微移
+  const reading=reader.classList.contains('on');
+  if(!reading) PARX=lantern.x-W/2;   // 裸眼3D:阅读时冻结视差,画面稳住
+  // 相机缓动;俯冲时持续锁定英雄花(任它摇曳生长都居中),否则回到屏幕中心(兼容 resize)
+  if(cam.on && specPlant){ cam.tcx=specPlant.tip.x; cam.tcy=specPlant.tip.y; }
+  else { cam.tcx=W/2; cam.tcy=H/2; cam.ts=1; }
+  cam.cx=lerp(cam.cx,cam.tcx,0.085); cam.cy=lerp(cam.cy,cam.tcy,0.085);
+  cam.s=lerp(cam.s,cam.ts,0.085);
+  camP=clamp((cam.s-1)/(DIVE-1),0,1);
   ctx.clearRect(0,0,W,H);
-  drawSky(t);
-  drawCelestial();
+  drawSky(t);                        // 天空铺满全屏(在相机外,缩放也不留缝)
+  ctx.save();                        // ↓ 世界层进入相机:俯冲时整座花园被推近
+  ctx.translate(W/2,H/2); ctx.scale(cam.s,cam.s); ctx.translate(-cam.cx,-cam.cy);
+  drawCelestial(t);
   drawMeteor(t,dt);
   drawFlock(t);            // 远方的雁阵
   drawFlora(t,0);          // 远层草甸(地平线上的合唱团)
@@ -1556,13 +1692,14 @@ function frame(t){
   drawPollen(t);
   drawParticles();
   drawFog(t);
-  drawLantern(t);
+  ctx.restore();                     // ↑ 世界层结束
+  drawLantern(t);                    // 提灯在屏幕空间,俯冲时淡出
   updateInk();
   requestAnimationFrame(frame);
 }
 
 ENV=envAt(hourNow());
-resize(); buildBlades(); buildFlora(); initPlants(); initParticles(); initAnimals(); initHud();
+resize(); buildBlades(); buildFlora(); buildClouds(); initPlants(); initParticles(); initAnimals(); initHud();
 requestAnimationFrame(t=>{ last=t; frame(t); });
 requestAnimationFrame(()=>document.body.classList.add('ready'));
 
