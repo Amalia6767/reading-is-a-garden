@@ -1,21 +1,23 @@
-# garden_web.py —— 昼夜花园:扫描所有植物,生成一个随本地时间改变光照的交互式花园网页
+# garden_web.py —— 昼夜花园:扫描所有植物，生成一个随本地时间改变光照的交互式花园网页
 #
 # 用法:  python garden_web.py        生成 garden.html
 #        python garden_web.py open   生成并直接在浏览器打开
 #
-# 每株发光植物 = garden/ 里的一篇论文笔记,形态与配色由标题哈希生成。
+# 每株发光植物 = garden/ 里的一篇论文笔记，形态与配色由标题哈希生成。
 # 花园的光照跟随你的本地时间:深夜 / 黎明 / 白昼 / 黄昏 连续过渡。
 # 光标是一盏提灯;按住为植物注入光;点击展开「知识标本」图鉴页。
 #
 # 调试参数(截图/分享用):
-#   garden.html?time=2        锁定时刻(0-24 小时,也可用 night/dawn/day/dusk)
+#   garden.html?time=2        锁定时刻(0-24 小时，也可用 night/dawn/day/dusk)
 #   garden.html?warm=0.6      跳过入场动画并预热苏醒值(0~1)
 #   garden.html?focus=0       直接打开第 N 株植物的标本页
-#   garden.html?demo          演示模式:在真实植物之外,种满一园经典论文(仅展示)
+#   garden.html?demo          演示模式:在真实植物之外，种满一园经典论文(仅展示)
 
 import json
 import os
+import re
 import sys
+import shlex
 import datetime
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -36,9 +38,19 @@ def load_plants():
         with open(path, encoding="utf-8") as f:
             md = f.read()
         title = fname[:-3].replace("_", " ").strip()
-        # 去掉 "1." 这类序号前缀,更像植物的名字
+        # 去掉 "1." 这类序号前缀，更像植物的名字
         if "." in title[:3] and title.split(".", 1)[0].isdigit():
             title = title.split(".", 1)[1].strip(" -")
+        # 文件名是按 40 字符截断存的:丢掉被拦腰斩断的末词和悬空的介词,
+        # 补个省略号。别让标本铭牌出现 "…Hierarchical I" 这种断句——标题的体面也是设计
+        if len(fname) - 3 >= 40:
+            words = title.split()
+            if len(words) > 3:
+                words.pop()
+            while words and words[-1].lower() in {"a", "an", "the", "of", "to", "for", "and", "in", "on", "with"}:
+                words.pop()
+            title = " ".join(words).rstrip(" -–—·:,") + "…"
+        title = re.sub(r"(\w)- ", r"\1: ", title)   # 文件名里 ":" 曾被存成 "- ",还原它
         ts = os.path.getctime(path)
         plants.append({
             "title": title,
@@ -75,13 +87,13 @@ def load_streak(memory):
 
 
 # ---------------------------------------------------------------------------
-# 阅读经济:生长值全部来自"读"这个动作本身,时间不再是养分。
-#   破土 30%       —— 读完第一口,即时发芽(即时回报)
-#   小口 +30%/篇   —— 同一篇按口推进,读完最后一口拿满(一株花盛开 = 一篇真读完)
-#   生态 +6%/株    —— 你之后每再种一株,这株就长高一点(封顶 +24%)
+# 阅读经济:生长值全部来自"读"这个动作本身，时间不再是养分。
+#   破土 30%       —— 读完第一口，即时发芽(即时回报)
+#   小口 +30%/篇   —— 同一篇按口推进，读完最后一口拿满(一株花盛开 = 一篇真读完)
+#   生态 +6%/株    —— 你之后每再种一株，这株就长高一点(封顶 +24%)
 #   连读 +4%/天    —— 连续打卡是给全园浇水(封顶 +20%)
 #   自测 +12%      —— 费曼自测通过(钩子:memory.json 里记 quiz_passed 即生效)
-# 没读完的论文,生长封顶 62%——花苞半开,等你回来读完。手动浇灌只值 10%。
+# 没读完的论文，生长封顶 62%——花苞半开，等你回来读完。手动浇灌只值 10%。
 # ---------------------------------------------------------------------------
 SPROUT, BITES_FULL, UNFINISHED_CAP = 0.30, 0.30, 0.62
 ECO_STEP, ECO_CAP = 0.06, 0.24
@@ -100,13 +112,13 @@ def feed_garden(plants, streak, memory):
             bites = BITES_FULL * ((done - 1) / (total - 1)) if total > 1 else BITES_FULL
             unfinished = done < total
             p["prog"] = {"done": done, "total": total}
-        else:                                            # 切小口之前的老植物,按读完算
+        else:                                            # 切小口之前的老植物，按读完算
             bites, unfinished, p["prog"] = BITES_FULL, False, None
         eco = min(ECO_STEP * (n - 1 - i), ECO_CAP)       # 在它之后种下的每一株都在滋养它
         quiz = QUIZ_BONUS if p["file"] in quiz_passed else 0.0
         g = min(SPROUT + bites + eco + streak_boost + quiz, 1.0)
         if unfinished:
-            g = min(g, UNFINISHED_CAP)                   # 没读完,不许盛开
+            g = min(g, UNFINISHED_CAP)                   # 没读完，不许盛开
         p["readG"] = round(g, 4)
         p["feed"] = {"bites": round(bites * 100), "eco": round(eco * 100),
                      "streak": round(streak_boost * 100), "quiz": round(quiz * 100)}
@@ -151,14 +163,29 @@ def grow():
         f.write(html)
     print(f"🌗 昼夜花园已生成: {OUT}")
     print(f"   {len(plants)} 株植物 · 连续 {streak} 天 · 阅读是唯一的主养分")
-    if "open" in sys.argv[1:]:
-        os.system(f'open "{OUT}"')
+    url = f"file://{OUT}"
+    args = sys.argv[1:]
+    bust = datetime.datetime.now().strftime("%H%M%S")   # 时间戳:强制浏览器加载最新版，别切回旧标签页
+    full = f"{url}?demo&v={bust}" if "demo" in args else \
+           (f"{url}?v={bust}" if "open" in args else None)
+    if full:
+        # ⚠️ macOS 的 `open` 命令会丢掉 file:// 的查询串(?demo&v=…),
+        #    导致既进不了演示模式、又每次切回旧标签页。改用 AppleScript 让 Chrome 加载完整地址。
+        apple = f'tell application "Google Chrome" to open location "{full}"'
+        rc = os.system("osascript -e " + shlex.quote(apple) + " >/dev/null 2>&1")
+        if rc != 0:                                     # 没装 Chrome 就退回默认浏览器(查询串可能丢失)
+            os.system(f'open {shlex.quote(full)}')
+        tag = "🎬 演示模式:满园繁花 + 开场序章" if "demo" in args else "🌿 你的花园"
+        print(f"   {tag}")
+        print(f"   已打开: {full}")
+        print("   若页面没更新，按 Cmd+Shift+R 强制刷新，或手动粘贴上面地址。")
     else:
-        print('   运行 `python garden_web.py open` 可直接在浏览器打开。')
+        print("   🎬 看演示: python garden_web.py demo   (满园繁花 + 序章)")
+        print("   🌿 逛真花园: python garden_web.py open")
 
 
 # ============================================================================
-# 下面是整座花园的前端。自包含单文件,无外部依赖,离线可开。
+# 下面是整座花园的前端。自包含单文件，无外部依赖，离线可开。
 # ============================================================================
 
 TEMPLATE = r"""<!DOCTYPE html>
@@ -311,7 +338,7 @@ TEMPLATE = r"""<!DOCTYPE html>
   .md th, .md td { padding: .6em .9em; border-bottom: 1px solid rgba(255,255,255,.08); }
   .md a { color: hsla(var(--hue),75%,75%,1); text-decoration: none; border-bottom: 1px dotted hsla(var(--hue),60%,65%,.5); }
 
-  /* ===== 白昼标本页:浅色植物图鉴纸(随时间自动切换,夜晚保持深色) ===== */
+  /* ===== 白昼标本页:浅色植物图鉴纸(随时间自动切换，夜晚保持深色) ===== */
   #reader.day .veil { background: rgba(206,214,206,.5); }
   #reader.day .panel { background: linear-gradient(165deg, rgba(250,250,244,.96), rgba(239,242,234,.97));
     border-color: hsla(var(--hue),45%,50%,.35);
@@ -351,6 +378,66 @@ TEMPLATE = r"""<!DOCTYPE html>
   #reader.day .md a { color: hsla(var(--hue),68%,36%,1); border-bottom-color: hsla(var(--hue),55%,45%,.5); }
   #reader.day .knowledge::-webkit-scrollbar-thumb { background: hsla(var(--hue),45%,45%,.35); }
 
+  /* ===== 序章:一粒种子的旅程(滚动叙事开场) ===== */
+  #intro { position: fixed; inset: 0; z-index: 80; }
+  #intro.done { opacity: 0; pointer-events: none; transition: opacity 1.3s ease; }
+  #introCv { position: fixed; inset: 0; width: 100vw; height: 100vh; }
+  .cap { position: fixed; z-index: 3; pointer-events: none; opacity: 0; max-width: 36em;
+         will-change: opacity, transform, filter; }
+  .cap .zh { font: 300 clamp(22px,3vw,33px)/1.95 var(--serif); color: rgba(228,236,250,.96);
+             letter-spacing: .08em; }
+  .cap .en { margin-top: 16px; font: 500 10px/1.8 var(--sans); letter-spacing: .44em;
+             color: rgba(150,175,215,.55); }
+  .cap.center { left: 50%; top: 44%; transform: translate(-50%,-50%) translateY(var(--dy,0px)); text-align: center; }
+  .cap.left { left: 8vw; bottom: 17vh; transform: translateY(var(--dy,0px)); }
+  .cap.right { right: 8vw; bottom: 19vh; text-align: right; transform: translateY(var(--dy,0px)); }
+  .cap.lower { left: 50%; bottom: 13vh; transform: translateX(-50%) translateY(var(--dy,0px)); text-align: center; }
+  .cinebar { position: fixed; left: 0; right: 0; height: 5.5vh; background: #010309; z-index: 4;
+             transition: height 1.4s cubic-bezier(.7,0,.25,1); }   /* 电影黑边:序幕的画框 */
+  .cinebar.t { top: 0; } .cinebar.b { bottom: 0; }
+  #intro.done .cinebar { height: 0; }                  /* 幕布收起，露出真实的花园 */
+  #cover { position: fixed; inset: 0; z-index: 4; display: flex; flex-direction: column;
+           align-items: center; justify-content: center; pointer-events: none;
+           transition: opacity 1.1s ease; }
+  #cover.gone { opacity: 0; pointer-events: none; }
+  #cover.gone .door { pointer-events: none; }
+  #cover .kicker { font: 500 10px/1 var(--sans); letter-spacing: .52em;
+                   color: rgba(150,178,220,.6); }
+  #cover h1 { margin-top: 26px; font: 400 clamp(34px,5.6vw,62px)/1.3 var(--serif);
+              color: #eaf0fc; letter-spacing: .16em; text-shadow: 0 0 60px rgba(120,160,255,.25); }
+  #cover .rule { width: 64px; height: 1px; margin: 30px 0 26px;
+                 background: linear-gradient(90deg,transparent,rgba(180,200,240,.65),transparent); }
+  #cover .sub { font: 300 14px/2 var(--serif); letter-spacing: .22em; color: rgba(190,206,235,.75); }
+  #cover .doors { margin-top: 52px; display: flex; gap: 18px; }
+  #cover .door { pointer-events: auto; cursor: pointer; padding: 14px 32px;
+                 border: 1px solid rgba(170,195,235,.35); border-radius: 32px;
+                 font: 500 11.5px/1 var(--sans); letter-spacing: .3em;
+                 color: rgba(218,230,250,.92); background: rgba(255,255,255,.03);
+                 backdrop-filter: blur(6px); transition: all .35s; }
+  #cover .door:hover { border-color: rgba(205,222,255,.85); background: rgba(140,170,230,.14);
+                       transform: translateY(-2px); box-shadow: 0 8px 30px rgba(90,130,220,.2); }
+  #cover .door.ghost { opacity: .5; }
+  #skipIntro { position: fixed; top: 30px; right: 38px; z-index: 5; cursor: pointer;
+               font: 500 10px/1 var(--sans); letter-spacing: .32em; color: rgba(170,190,225,.5);
+               padding: 11px 16px; border: 1px solid rgba(160,185,225,.2); border-radius: 22px;
+               transition: all .3s; }
+  #skipIntro:hover { color: rgba(222,233,250,.92); border-color: rgba(200,220,255,.5); }
+  #scrollHint { position: fixed; bottom: 28px; left: 50%; z-index: 5; pointer-events: none;
+                font: 300 10px/2 var(--sans); letter-spacing: .42em; color: rgba(185,203,238,.6);
+                opacity: 0; transition: opacity .9s; transform: translateX(-50%);
+                animation: hintFloat 2.4s ease-in-out infinite; }
+  #scrollHint.on { opacity: 1; }
+  @keyframes hintFloat { 50% { transform: translate(-50%,7px); } }
+  #soundToggle { position: fixed; bottom: 24px; right: 28px; z-index: 82; width: 38px; height: 38px;
+                 border-radius: 50%; border: 1px solid rgba(170,195,235,.3);
+                 color: rgba(200,215,245,.75); font: 400 14px/36px var(--sans); text-align: center;
+                 cursor: pointer; background: rgba(8,12,24,.4); backdrop-filter: blur(6px);
+                 display: none; transition: opacity .3s; }
+  #soundToggle.muted { opacity: .4; }
+  #introBar { position: fixed; top: 0; left: 0; height: 2px; width: 0; z-index: 84;
+              background: linear-gradient(90deg, rgba(140,180,255,.85), rgba(200,170,255,.95));
+              box-shadow: 0 0 12px rgba(150,180,255,.7); }
+
   @media (max-width: 860px) {
     #brand { left: 24px; top: 24px; } #stats { right: 24px; top: 26px; }
     #brand .zh { font-size: 20px; } #hint { display: none; }
@@ -388,7 +475,7 @@ TEMPLATE = r"""<!DOCTYPE html>
 
 <div class="hud" id="empty" style="display:none">
   <div class="seed">🌰</div>
-  <div class="msg">花园还是空的<br>去读第一篇论文,种下第一株植物吧</div>
+  <div class="msg">花园还是空的<br>去读第一篇论文，种下第一株植物吧</div>
 </div>
 
 <div id="reader">
@@ -418,13 +505,38 @@ TEMPLATE = r"""<!DOCTYPE html>
   </div>
 </div>
 
+<div id="intro">
+  <canvas id="introCv"></canvas>
+  <div class="cinebar t"></div><div class="cinebar b"></div>
+  <div class="cap center" id="cap1"><div class="zh">每一次阅读，都始于一粒种子<br>一个词，一点光</div><div class="en">EVERY READING BEGINS WITH A SEED</div></div>
+  <div class="cap left"   id="cap2"><div class="zh">理解在看不见的地方扎根<br>像根，在黑暗中彼此相连</div><div class="en">ROOTS GROW IN THE DARK</div></div>
+  <div class="cap right"  id="cap3"><div class="zh">一篇论文，几瓣月色<br>每晚读一瓣，它便向上生长一截</div><div class="en">PETAL BY PETAL, NIGHT BY NIGHT</div></div>
+  <div class="cap lower" id="cap4"><div class="zh">读完最后一瓣的那个夜晚，它开了</div><div class="en">AND ONE NIGHT, IT BLOOMS</div></div>
+  <div class="cap left"   id="cap5"><div class="zh">你读过的每一篇，都没有消失<br>一篇，一株</div><div class="en">NOTHING YOU READ IS LOST</div></div>
+  <div class="cap center" id="cap6"><div class="zh">欢迎回到你的花园</div><div class="en">WELCOME TO YOUR GARDEN</div></div>
+  <div id="cover">
+    <div class="kicker">A GARDEN GROWN FROM PAPERS</div>
+    <h1>阅读是一座花园</h1>
+    <div class="rule"></div>
+    <div class="sub">你读过的每一篇论文，都会在这里长成一株花</div>
+    <div class="doors">
+      <div class="door" id="doorSound">进入花园 · 伴随声音</div>
+      <div class="door ghost" id="doorSilent">静音进入</div>
+    </div>
+  </div>
+  <div id="skipIntro">跳过序章 ⏵</div>
+  <div id="scrollHint">滚动 · 种下一粒光 ↓</div>
+  <div id="introBar"></div>
+</div>
+<div id="soundToggle" title="声音">♪</div>
+
 <script>
 const DATA = __GARDEN_DATA__;
 // 调试/截图: ?time=2|night|dawn|day|dusk 锁定时刻; ?warm=0~1 预热; ?focus=N 直开标本页
 const QS=new URLSearchParams(location.search);
 const WARM=QS.has('warm')?parseFloat(QS.get('warm')||'0.3'):null;
 const NAMED_TIME={night:2,dawn:6.3,day:13,dusk:19.4};
-// —— 演示模式:?demo 时在真实植物之外种满一园经典论文,展示"读了很久之后"的花园
+// —— 演示模式:?demo 时在真实植物之外种满一园经典论文，展示"读了很久之后"的花园
 const DEMO=QS.has('demo');
 if(DEMO){
   const DEMO_TITLES=[
@@ -436,7 +548,7 @@ if(DEMO){
     'U-Net Convolutional Networks for Biomedical Segmentation','Mastering the Game of Go (AlphaGo)',
   ];
   const drnd=mulberry32(20260703);
-  const demoMd='# 🌱 演示植物\n\n这是一株来自想象花园的演示植物——它代表一篇你还没读的经典。\n\n> 读一篇真正的论文,你的花园就会真实地长出一株。\n\n---\n\n*Reading is a Garden — 你读过的每一篇,都在这里生长。*';
+  const demoMd='# 🌱 演示植物\n\n这是一株来自想象花园的演示植物——它代表一篇你还没读的经典。\n\n> 读一篇真正的论文，你的花园就会真实地长出一株。\n\n---\n\n*Reading is a Garden — 你读过的每一篇，都在这里生长。*';
   for(const tt of DEMO_TITLES){
     const daysAgo=2+Math.floor(drnd()*80);
     const ts=Date.now()-daysAgo*864e5;
@@ -452,6 +564,13 @@ function hourNow(){
   if(tv!=null){ if(tv in NAMED_TIME) return NAMED_TIME[tv];
     const f=parseFloat(tv); if(!isNaN(f)) return ((f%24)+24)%24; }
   const d=new Date(); return d.getHours()+d.getMinutes()/60+d.getSeconds()/3600;
+}
+// 永夜花园:序章是月夜，花园便也永远是夜——发光的花只属于黑暗。
+// 真实时间被映射进深夜窗口(21.6→28.4 点,dark 恒为 1),天不会亮,
+// 但月亮仍随真实的一天缓缓西移，时间没有停，只是永远停在夜里。
+// ?time= 调试参数仍可强制任意时刻(比如 ?time=day 看废弃的白昼)。
+function envHour(){
+  return QS.get('time')!=null ? hourNow() : (21.6+hourNow()/24*6.8)%24;
 }
 
 /* ================= 工具 ================= */
@@ -509,10 +628,11 @@ addEventListener('resize',()=>{ resize(); if(reader.classList.contains('on')) si
 const mouse={x:innerWidth/2,y:innerHeight*0.62,vx:0,vy:0,down:false,downAt:0,moved:0};
 const lantern={x:innerWidth/2,y:innerHeight*0.62,r:240};
 let wind=0, PARX=0, frameN=0;   // PARX: 裸眼3D视差量(随提灯位置)
-// 电影镜头:点花时相机俯冲扎进那朵花,关闭时拉回。rest=identity(cx=W/2,cy=H/2,s=1)
+let NAMEP=null;                 // 本帧唯一亮名牌的植物:离提灯最近的那株，不再满屏叠字
+// 电影镜头:点花时相机俯冲扎进那朵花，关闭时拉回。rest=identity(cx=W/2,cy=H/2,s=1)
 const cam={cx:innerWidth/2, cy:innerHeight/2, s:1, tcx:innerWidth/2, tcy:innerHeight/2, ts:1, on:false};
 const DIVE=2.75;                // 俯冲到多近
-let camP=0;                     // 0→1 俯冲进度,驱动提灯淡出等
+let camP=0;                     // 0→1 俯冲进度，驱动提灯淡出等
 addEventListener('pointermove',e=>{
   mouse.vx=e.clientX-mouse.x; mouse.vy=e.clientY-mouse.y;
   mouse.x=e.clientX; mouse.y=e.clientY;
@@ -525,7 +645,8 @@ addEventListener('pointerup',e=>{
   mouse.down=false; document.getElementById('hint').classList.add('gone');
   saveBonus();   // 松手时落盘:浇灌出的生长永久保存
   const dt=performance.now()-mouse.downAt;
-  if(dt<300 && mouse.moved<12 && !reader.classList.contains('on')) tryOpen(e.clientX,e.clientY);
+  if(dt<300 && mouse.moved<12 && !reader.classList.contains('on') && !INTRO.active)
+    tryOpen(e.clientX,e.clientY);
 });
 
 /* ================= 星空 ================= */
@@ -540,7 +661,7 @@ function drawSky(t){
   const g=ctx.createLinearGradient(0,0,0,H);
   g.addColorStop(0,css(ENV.top)); g.addColorStop(0.55,css(ENV.mid)); g.addColorStop(1,css(ENV.hor));
   ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
-  // 地平线雾光(夜是幽蓝青雾,黎明黄昏是暖雾,白昼是亮雾)
+  // 地平线雾光(夜是幽蓝青雾，黎明黄昏是暖雾，白昼是亮雾)
   const mx=W*0.5+Math.sin(t*0.00003)*W*0.06;
   const mg=ctx.createRadialGradient(mx,H*0.62,0,mx,H*0.62,W*0.42);
   mg.addColorStop(0,css(ENV.mist,0.12+0.08*ENV.dark)); mg.addColorStop(1,css(ENV.mist,0));
@@ -620,10 +741,19 @@ function drawCelestial(t){
     halo.addColorStop(0,`rgba(215,228,255,${0.2*a})`); halo.addColorStop(1,'transparent');
     ctx.fillStyle=halo; ctx.beginPath(); ctx.arc(x,y,110,0,6.29); ctx.fill();
     ctx.restore();
-    ctx.fillStyle=`rgba(226,236,255,${0.94*a})`;
-    ctx.beginPath(); ctx.arc(x,y,24,0,6.29); ctx.fill();
-    ctx.fillStyle=css(ENV.mid,a);
-    ctx.beginPath(); ctx.arc(x-10,y-3,20.5,0,6.29); ctx.fill();
+    // 真月牙:离屏画布用 destination-out 抠出来。
+    // 以前用"暗圆压亮圆",暗圆会在光晕里露出轮廓，看着像日食。
+    if(!drawCelestial._moon){
+      const mc=document.createElement('canvas'); mc.width=mc.height=60;
+      const m=mc.getContext('2d');
+      m.fillStyle='#e2ecff'; m.beginPath(); m.arc(30,30,24,0,6.29); m.fill();
+      m.globalCompositeOperation='destination-out';
+      m.beginPath(); m.arc(20,27,20.5,0,6.29); m.fill();
+      drawCelestial._moon=mc;
+    }
+    ctx.globalAlpha=0.94*a;
+    ctx.drawImage(drawCelestial._moon,x-30,y-30);
+    ctx.globalAlpha=1;
   }
 }
 
@@ -674,7 +804,7 @@ function drawBlades(t){
 
 /* ================= 野花草甸:参考图里的茂密群落 =================
    伞形花序 / 蒲公英绒球 / 蕨叶 / 松果菊 / 碎花枝 / 草簇。
-   两个景深层:远层小而朦胧,中层高而清晰。它们是花园的"合唱团",
+   两个景深层:远层小而朦胧，中层高而清晰。它们是花园的"合唱团",
    论文植物是发光的"独唱者"。 */
 let flora=[];
 function buildFlora(){
@@ -698,7 +828,7 @@ function buildFlora(){
   }
 }
 function floraInk(f,lit){
-  // 剪影色:夜里是暗蓝绿剪影被提灯镶边,白昼是哑光植物色;前景层最暗最实
+  // 剪影色:夜里是暗蓝绿剪影被提灯镶边，白昼是哑光植物色;前景层最暗最实
   const d=ENV.dark;
   if(f.layer===2){
     const lum=lerp(22,7,d)+lit*22;
@@ -715,7 +845,7 @@ function headInk(f,lit){
   return null;
 }
 function drawFlora(t,layer){
-  const par=[0.012,0.028,0.065][layer];   // 越近的层,视差越大
+  const par=[0.012,0.028,0.065][layer];   // 越近的层，视差越大
   for(const f of flora){
     if(f.layer!==layer) continue;
     const x=f.xf*W-PARX*par, gy=groundY(x)+f.jy;
@@ -905,7 +1035,7 @@ function makePlant(rec,i,n){
   for(let k=2;k<segs-1;k++) if(rnd()<0.5)
     branches.push({seg:k, side:rnd()<0.5?-1:1, len:26+rnd()*26,
                    bend:0.5+rnd()*0.5, ph:rnd()*6.28});
-  // 拟拉丁学名:属名来自色系,种加词来自标题
+  // 拟拉丁学名:属名来自色系，种加词来自标题
   const word=(rec.title.match(/[A-Za-z]{3,}/)||['flora'])[0].toLowerCase();
   const species=pal.genus+' '+word+(/[aeiou]$/.test(word)?'nsis':'um');
   return {
@@ -937,6 +1067,9 @@ function initPlants(){
   plants=DATA.plants.map((r,i)=>makePlant(r,i,n));
   plants.sort((a,b)=>a.depth-b.depth);
   layoutPlants();
+  // 有序章时，植物先按住不长——等序章尾声"破土"信号到了再逐株冒出来
+  if(typeof SHOW_INTRO!=='undefined' && SHOW_INTRO)
+    plants.forEach(p=>{ p.entrance=0; p.entranceDelay=1e12; });
 }
 
 function drawPlant(p,t){
@@ -947,7 +1080,7 @@ function drawPlant(p,t){
   const target=smooth(clamp(1-Math.min(dTip,dBase)/lantern.r,0,1));
   p.awake=lerp(p.awake,Math.max(target,0.3),0.055);   // 0.3 = 环境微光
   // —— 浇灌:注入光 = 真实生长。长按时生长值上涨并持久保存
-  if(mouse.down && Math.min(dTip,dBase)<lantern.r*0.7 && !reader.classList.contains('on')){
+  if(mouse.down && Math.min(dTip,dBase)<lantern.r*0.7 && !reader.classList.contains('on') && !INTRO.active){
     p.nourish=clamp(p.nourish+0.016,0,1);
     if(p.bonus<Math.min(0.10,1-p.baseG)){
       p.bonus=Math.min(p.bonus+0.0011,0.10,1-p.baseG);
@@ -956,10 +1089,10 @@ function drawPlant(p,t){
     }
     if(Math.random()<0.35) spawnSpore(p);
   } else p.nourish=Math.max(0,p.nourish-0.008);
-  // —— 弹性生长:目标身高变了,茎干带着回弹感抽高
+  // —— 弹性生长:目标身高变了，茎干带着回弹感抽高
   p.growth=clamp(p.baseG+p.bonus,0,1);
   p.gv+=(p.growth-p.gCur)*0.05; p.gv*=0.84; p.gCur+=p.gv;
-  // —— 阶段突破:每跨过一档,礼花冲击波
+  // —— 阶段突破:每跨过一档，礼花冲击波
   const stage=Math.floor(p.gCur*6);
   if(stage>p.lastStage){ p.lastStage=stage; burst(p, p.gCur>=0.97); }
 
@@ -989,7 +1122,7 @@ function drawPlant(p,t){
   }
   p.tip.x=x; p.tip.y=y;
 
-  // —— 伪3D 圆柱茎:暗底 → 本体渐细 → 侧缘高光,像被月光描过边
+  // —— 伪3D 圆柱茎:暗底 → 本体渐细 → 侧缘高光，像被月光描过边
   const drawStem=(off,wBase,wTip,color,blur)=>{
     ctx.strokeStyle=color; ctx.lineCap='round';
     ctx.shadowColor=blur?`hsla(${hue},90%,65%,${glowA})`:'transparent';
@@ -1005,7 +1138,7 @@ function drawPlant(p,t){
   drawStem(0, 3.1*p.depth, 1.1*p.depth, `hsla(${hue},55%,${lerp(40,30,ENV.dark)+wake*14}%,0.95)`, 0);
   drawStem(-1.1*p.depth, 1.1*p.depth, 0.5*p.depth,
            `hsla(${hue},90%,${62+wake*16}%,${(0.55+wake*0.4)*glowK})`, (10+wake*14)*glowK);
-  // 茎节:细小的光结,生长的关节
+  // 茎节:细小的光结，生长的关节
   for(let k=2;k<pts.length-1;k+=2){
     ctx.fillStyle=`hsla(${hue},85%,${58+wake*20}%,${(0.4+wake*0.4)*glowK})`;
     ctx.beginPath(); ctx.arc(pts[k][0],pts[k][1],1.1*p.depth,0,6.29); ctx.fill();
@@ -1041,7 +1174,7 @@ function drawPlant(p,t){
     ctx.globalCompositeOperation='source-over';
   }
 
-  // 叶:随生长逐片"舒展开来"——新叶从贴茎处旋开,带回弹
+  // 叶:随生长逐片"舒展开来"——新叶从贴茎处旋开，带回弹
   for(let li=0;li<p.leaves.length;li++){
     const lf=p.leaves[li];
     const thr=0.34+(lf.seg/p.segs)*0.42;              // 越高的叶越晚长出
@@ -1069,7 +1202,7 @@ function drawPlant(p,t){
     ctx.stroke();
   }
 
-  // 花冠:花苞 → 绽放。budF 由生长值驱动——浇灌到 50% 以上,花苞开始打开
+  // 花冠:花苞 → 绽放。budF 由生长值驱动——浇灌到 50% 以上，花苞开始打开
   const budF=smooth(clamp((p.gCur-0.5)/0.25,0,1));
   const open=(0.3+0.7*clamp(wake,0,1))*budF;
   const pl=p.petalLen*scale*(0.55+0.45*open)*(0.3+0.7*budF);
@@ -1092,10 +1225,10 @@ function drawPlant(p,t){
     ctx.globalCompositeOperation='source-over';
   }
   ctx.globalCompositeOperation=ENV.dark>0.45?'lighter':'source-over';
-  const dayBoost=(1-ENV.dark)*0.42;   // 白昼花瓣更实,补偿失去的辉光
+  const dayBoost=(1-ENV.dark)*0.42;   // 白昼花瓣更实，补偿失去的辉光
   if(budF>0.05){
   if(p.bloomType==='orb'){
-    // 光球:一圈发光的细丝,像蒲公英种子做的灯
+    // 光球:一圈发光的细丝，像蒲公英种子做的灯
     ctx.strokeStyle=`hsla(${hue},85%,78%,${(0.18+wake*0.4+dayBoost)*budF})`; ctx.lineWidth=0.8;
     for(let k=0;k<16;k++){
       const a=rot*2+k*Math.PI*2/16, L=pl*1.05*(0.8+0.2*Math.sin(t*0.002+k));
@@ -1108,7 +1241,7 @@ function drawPlant(p,t){
     const isLily=p.bloomType==='lily';
     const nP=isLily?5+(p.petals%3):p.petals;
     const plen0=isLily?pl*1.4:pl, wfr=isLily?0.2:0.36;
-    // 伪3D 花瓣穹顶:朝向不同,长短与挤压各异,像一朵真的花微微俯身
+    // 伪3D 花瓣穹顶:朝向不同，长短与挤压各异，像一朵真的花微微俯身
     const tilt=Math.sin(t*0.0004+p.ph)*0.15;
     for(let k=0;k<nP;k++){
       const a=rot+k*Math.PI*2/nP;
@@ -1138,7 +1271,7 @@ function drawPlant(p,t){
         ctx.beginPath(); ctx.arc(px2,py2,1.2,0,6.29); ctx.fill();
       }
     }
-    // 花蕊:花丝一束,顶着发亮的花药
+    // 花蕊:花丝一束，顶着发亮的花药
     if(budF>0.5){
       const sf=(budF-0.5)*2;
       for(let k=0;k<6;k++){
@@ -1152,7 +1285,7 @@ function drawPlant(p,t){
     }
   }
   }
-  // 满冠荣耀:长满 97% 后,一圈旋转的光环 + 缓缓释放光种
+  // 满冠荣耀:长满 97% 后，一圈旋转的光环 + 缓缓释放光种
   if(p.gCur>=0.97){
     ctx.strokeStyle=`hsla(${hue},90%,80%,${(0.25+wake*0.35)*glowK})`;
     ctx.lineWidth=1; ctx.setLineDash([4,7]);
@@ -1175,7 +1308,7 @@ function drawPlant(p,t){
   ctx.restore();
   ctx.globalCompositeOperation='source-over';
 
-  // —— 浇灌中的生长读数:一圈进度弧 + 百分比,看着数字往上跳
+  // —— 浇灌中的生长读数:一圈进度弧 + 百分比，看着数字往上跳
   if(p.nourish>0.08){
     const ux=p.tip.x, uy=p.tip.y-pl-46, R2=13;
     ctx.globalCompositeOperation='lighter';
@@ -1193,9 +1326,9 @@ function drawPlant(p,t){
     ctx.globalCompositeOperation='source-over';
   }
 
-  // 名牌
+  // 名牌(每帧只属于离提灯最近的一株)
   const la2=clamp((wake-0.42)*2.2,0,1)*ent;
-  if(la2>0.02 && p.nourish<=0.08){
+  if(la2>0.02 && p.nourish<=0.08 && p===NAMEP){
     const ink=mixc([35,48,78],[205,220,245],ENV.dark);
     const name=p.rec.title.length>34?p.rec.title.slice(0,33)+'…':p.rec.title;
     ctx.font='500 10px "Avenir Next","PingFang SC",sans-serif'; ctx.textAlign='center';
@@ -1205,7 +1338,7 @@ function drawPlant(p,t){
     ctx.fillStyle=`hsla(${hue},70%,${lerp(45,75,ENV.dark)}%,${la2*0.75})`;
     ctx.font='300 9px "Avenir Next","PingFang SC",sans-serif';
     const pg=p.rec.prog;
-    const tail=(pg&&pg.done<pg.total)?`第 ${pg.done}/${pg.total} 口 · 读完才盛开`:'长按浇灌 · 点击展开';
+    const tail=(pg&&pg.done<pg.total)?`第 ${pg.done}/${pg.total} 瓣 · 读完才盛开`:'长按浇灌 · 点击展开';
     ctx.fillText(`№ ${String(p.i+1).padStart(3,'0')} · ${p.rec.date} · ${tail}`, p.tip.x, ly2+15);
   }
 }
@@ -1351,7 +1484,7 @@ function drawLantern(t){
     lantern.x=lerp(lantern.x,mouse.x,0.09);
     lantern.y=lerp(lantern.y,mouse.y,0.09);
   }
-  const k=(0.3+0.7*ENV.dark)*(1-camP);   // 俯冲时提灯淡出,让位给镜头
+  const k=(0.3+0.7*ENV.dark)*(1-camP);   // 俯冲时提灯淡出，让位给镜头
   if(k<=0.001) return;
   const breathe=1+Math.sin(t*0.0022)*0.05+(mouse.down?0.22:0);
   const R=lantern.r*breathe;
@@ -1373,7 +1506,7 @@ let specPlant=null, specRun=false, specDay=null;
 const specCv=document.getElementById('spec'), specCtx=specCv.getContext('2d');
 let specW=0, specH=0;
 
-// 标本页的明暗跟随环境时间:白昼=浅色图鉴纸,夜晚=深色。跨过临界才切,避免抖动。
+// 标本页的明暗跟随环境时间:白昼=浅色图鉴纸，夜晚=深色。跨过临界才切，避免抖动。
 function setReaderTheme(){
   const day = ENV && ENV.dark < 0.5;
   if(day!==specDay){ specDay=day; reader.classList.toggle('day', day); }
@@ -1391,26 +1524,30 @@ function tryOpen(x,y){
 }
 function openReader(p){
   specPlant=p;
+  if(typeof AUDIO!=='undefined') AUDIO.plink(4);   // 展开标本时一声轻响
   setReaderTheme();
   reader.style.setProperty('--hue',Math.round(p.hue));
   const fx=reader.querySelector('.bloomfx');
   fx.style.left=(p.tip.x||innerWidth/2)+'px'; fx.style.top=(p.tip.y||innerHeight/2)+'px';
   reader.querySelector('.no').textContent=`SPECIMEN\n№ ${String(p.i+1).padStart(3,'0')}`;
   reader.querySelector('.title').textContent=p.rec.title;
-  reader.querySelector('.meta').textContent=`${p.rec.file}`;
   document.querySelector('#co-species .v').innerHTML=`<i>${p.species}</i><br>${p.pal.name} · HUE ${Math.round(p.hue)}°`;
   document.querySelector('#co-bloom .v').textContent=
     `${p.bloomType==='orb'?'16 FILAMENTS':p.petals+' PETALS'} · ${p.bloomType.toUpperCase()}`;
   const fd=p.rec.feed, pg=p.rec.prog;
+  const parts=['破土30'];                                // 零值项不上铭牌:展示零是反激励
+  if(fd){ if(fd.bites) parts.push(`逐瓣${fd.bites}`); if(fd.eco) parts.push(`生态${fd.eco}`);
+    if(fd.streak) parts.push(`连读${fd.streak}`); if(fd.quiz) parts.push(`自测${fd.quiz}`); }
+  if(p.bonus>0.005) parts.push(`光${Math.round(p.bonus*100)}`);
   document.querySelector('#co-growth .v').textContent = fd
-    ? `${Math.round(p.growth*100)}% = 破土30 + 小口${fd.bites} + 生态${fd.eco} + 连读${fd.streak}`
-      +(fd.quiz?` + 自测${fd.quiz}`:'')+(p.bonus>0.005?` + 光${Math.round(p.bonus*100)}`:'')
+    ? `${Math.round(p.growth*100)}% = ${parts.join(' + ')}`
     : `${Math.round(p.growth*100)}% · DAY ${p.days}`;
-  reader.querySelector('.meta').textContent=`${p.rec.file}`
-    +(pg?(pg.done<pg.total?` · 已读 ${pg.done}/${pg.total} 口`:' · 已读完 ✦'):'');
+  // 铭牌上不出现文件名:标本页是图鉴，不是文件管理器
+  reader.querySelector('.meta').textContent =
+    pg ? (pg.done<pg.total?`已读 ${pg.done} / ${pg.total} 瓣`:'全篇读完 ✦') : '';
   document.querySelector('#co-planted .v').textContent=`${p.rec.date} · ${DATA.streak} DAY STREAK`;
   reader.querySelector('.md').innerHTML=mdToHtml(p.rec.md);
-  // 相机俯冲扎进这朵花;阅读页在冲到花前的一刻才浮现,所以先看见花园被推近
+  // 相机俯冲扎进这朵花;阅读页在冲到花前的一刻才浮现，所以先看见花园被推近
   cam.tcx=p.tip.x||W/2; cam.tcy=p.tip.y||H/2; cam.ts=DIVE; cam.on=true;
   reader.classList.add('on');
   reader.querySelector('.knowledge').scrollTop=0;
@@ -1420,7 +1557,7 @@ function openReader(p){
 }
 function closeReader(){
   reader.classList.remove('show');
-  cam.ts=1; cam.tcx=W/2; cam.tcy=H/2; cam.on=false;   // 镜头拉回原处,花园重新铺开
+  cam.ts=1; cam.tcx=W/2; cam.tcy=H/2; cam.on=false;   // 镜头拉回原处，花园重新铺开
   clearTimeout(openReader._tm);
   setTimeout(()=>{ specRun=false; reader.classList.remove('on'); },600);
 }
@@ -1462,7 +1599,7 @@ function layoutSpecLines(){
 }
 function specLoop(t){
   if(!specRun) return;
-  setReaderTheme();            // 阅读时若跨过昼夜临界,标本页也随之切换
+  setReaderTheme();            // 阅读时若跨过昼夜临界，标本页也随之切换
   drawSpecimen(specPlant,t);
   requestAnimationFrame(specLoop);
 }
@@ -1472,7 +1609,7 @@ function drawSpecimen(p,t){
   const hue=p.hue;
   const cx=w*0.5, cy=h*0.32;
   const R=Math.min(w,h)*0.17*(1+0.05*Math.sin(t*0.0008));
-  // 测量环 + 刻度:图鉴的仪器感(白昼用深墨线,夜里用浅荧光线)
+  // 测量环 + 刻度:图鉴的仪器感(白昼用深墨线，夜里用浅荧光线)
   c.strokeStyle=`hsla(${hue},55%,${day?40:72}%,${day?.34:.22})`; c.lineWidth=1;
   c.setLineDash([3,5]);
   c.beginPath(); c.arc(cx,cy,R*1.75,0,6.29); c.stroke();
@@ -1482,7 +1619,7 @@ function drawSpecimen(p,t){
     c.moveTo(cx+Math.cos(a)*R*1.75,cy+Math.sin(a)*R*1.75);
     c.lineTo(cx+Math.cos(a)*(R*1.75+(k%3?4:8)),cy+Math.sin(a)*(R*1.75+(k%3?4:8)));
     c.stroke(); }
-  // 茎:从底部长上来,微微摇曳
+  // 茎:从底部长上来，微微摇曳
   const sway=Math.sin(t*0.0009+p.ph)*w*0.012;
   c.strokeStyle=`hsla(${hue},55%,40%,.9)`; c.lineWidth=3; c.lineCap='round';
   c.beginPath(); c.moveTo(cx+sway*0.2,h*0.96);
@@ -1505,7 +1642,7 @@ function drawSpecimen(p,t){
     c.quadraticCurveTo(lx+(ex-lx)*0.5-px, ly+(ey-ly)*0.5-py, lx,ly);
     c.fill();
   }
-  // 花冠:双层花瓣,全开状态。白昼画成实体水彩标本,夜里画成发光体。
+  // 花冠:双层花瓣，全开状态。白昼画成实体水彩标本，夜里画成发光体。
   const rot=t*0.00005+p.ph;
   c.save(); c.translate(cx+sway*0.6,cy);
   c.globalCompositeOperation = day ? 'source-over' : 'lighter';
@@ -1532,7 +1669,7 @@ function drawSpecimen(p,t){
         const wdt=ring.L*ring.wf;
         const nx=Math.cos(a+Math.PI/2)*wdt, ny=Math.sin(a+Math.PI/2)*wdt;
         const grad=c.createLinearGradient(0,0,px2,py2);
-        if(day){   // 实体花瓣:瓣基浅、瓣尖浓,像水彩
+        if(day){   // 实体花瓣:瓣基浅、瓣尖浓，像水彩
           grad.addColorStop(0,`hsla(${hue},68%,72%,${0.9*ring.al})`);
           grad.addColorStop(1,`hsla(${hue},76%,47%,${0.98*ring.al})`);
         } else {   // 发光花瓣
@@ -1633,37 +1770,582 @@ function initHud(){
     DEMO ? `${n} 株植物 · 演示模式` : `${n} 株植物 · ${DATA.totalDays} 个阅读日`;
   document.getElementById('subline').textContent=`你读过的每一篇，都在这里生长`;
   if(n===0) document.getElementById('empty').style.display='block';
-  // 把"回来的理由"写在天上:正在读的还差几口、种子箱里几颗种子在等
+  // 把"回来的理由"写在天上:正在读的还剩几瓣、种子箱里几颗种子在等
   const sb=DATA.seedbox||{};
   let nxt='再读一篇 全园+6% · 明天回来 +4%';
   if(sb.reading){
     const tt=sb.reading.title.length>12?sb.reading.title.slice(0,12)+'…':sb.reading.title;
-    nxt=`《${tt}》还差 ${sb.reading.total-sb.reading.done} 口`
+    nxt=`《${tt}》还有 ${sb.reading.total-sb.reading.done} 瓣未读`
         +(sb.waiting?` · 种子箱 ${sb.waiting} 颗`:'');
-  } else if(sb.waiting) nxt=`种子箱有 ${sb.waiting} 颗种子,等你来读`;
+  } else if(sb.waiting) nxt=`种子箱有 ${sb.waiting} 颗种子，等你来读`;
   if(n>0||sb.waiting) document.getElementById('nextLine').textContent=nxt;
   updateClock();
   setInterval(updateClock,30000);
 }
 function updateClock(){
-  const hr=hourNow();
+  const hr=hourNow();   // 时针是真实的，夜是永恒的
   const hh=String(Math.floor(hr)).padStart(2,'0'), mm=String(Math.floor(hr%1*60)).padStart(2,'0');
-  document.getElementById('clockLine').textContent=`${hh}:${mm} · ${phaseName(hr)}`;
+  document.getElementById('clockLine').textContent=`${hh}:${mm} · ${phaseName(envHour())}`;
 }
 function updateInk(){
-  // HUD 文字颜色随昼夜反转,保证可读
+  // HUD 文字颜色随昼夜反转，保证可读
   const ink=mixc([30,42,70],[207,216,234],ENV.dark);
   document.body.style.setProperty('--ink',css(ink));
 }
 
+/* ================= 声音:现场合成的氛围音乐(零外部文件) =================
+   低音铺底 + 两组和弦缓慢交融;滤波器随滚动进度打开——越深入，越明亮。
+   浏览器要求用户手势后才能出声，所以由封面的「伴随声音」之门开启。 */
+const AUDIO={started:false,muted:false,ctx:null,master:null,filter:null,vol:0.8};
+AUDIO.init=function(){
+  if(this.started) return;
+  try{
+    const C=this.ctx=new (window.AudioContext||window.webkitAudioContext)();
+    const master=this.master=C.createGain(); master.gain.value=0;
+    const filter=this.filter=C.createBiquadFilter();
+    filter.type='lowpass'; filter.frequency.value=340; filter.Q.value=0.6;
+    // 混响:白噪声脉冲响应,3 秒指数衰减
+    const len=C.sampleRate*2.8, imp=C.createBuffer(2,len,C.sampleRate);
+    for(let ch=0;ch<2;ch++){ const d=imp.getChannelData(ch);
+      for(let i=0;i<len;i++) d[i]=(Math.random()*2-1)*Math.pow(1-i/len,3.2); }
+    const rev=C.createConvolver(); rev.buffer=imp;
+    const revG=C.createGain(); revG.gain.value=0.55;
+    filter.connect(master); filter.connect(rev); rev.connect(revG); revG.connect(master);
+    master.connect(C.destination);
+    this.bus=filter;
+    // 两组和弦(Am9 ↔ Fmaj9),每组每音 = 一对轻微失谐的正弦
+    const mk=(freqs)=>{ const g=C.createGain(); g.gain.value=0; g.connect(filter);
+      for(const f of freqs) for(const dt of [-2.4,2.4]){
+        const o=C.createOscillator(); o.type='sine'; o.frequency.value=f; o.detune.value=dt;
+        const og=C.createGain(); og.gain.value=0.028; o.connect(og); og.connect(g); o.start(); }
+      return g; };
+    this.chA=mk([110,164.81,246.94,329.63]);
+    this.chB=mk([87.31,174.61,220,349.23]);
+    // 一缕气声:噪声 → 带通
+    const nb=C.createBuffer(1,C.sampleRate*2,C.sampleRate), nd=nb.getChannelData(0);
+    for(let i=0;i<nd.length;i++) nd[i]=Math.random()*2-1;
+    const ns=C.createBufferSource(); ns.buffer=nb; ns.loop=true;
+    const bp=C.createBiquadFilter(); bp.type='bandpass'; bp.frequency.value=1400; bp.Q.value=1.6;
+    this.airG=C.createGain(); this.airG.gain.value=0.006;
+    ns.connect(bp); bp.connect(this.airG); this.airG.connect(filter); ns.start();
+    this.started=true;
+    master.gain.setTargetAtTime(this.vol,C.currentTime,1.6);
+    document.getElementById('soundToggle').style.display='block';
+  }catch(e){}
+};
+AUDIO.update=function(P){
+  if(!this.started) return;
+  const T=this.ctx.currentTime;
+  this.filter.frequency.setTargetAtTime(340+P*3800,T,0.4);
+  this.airG.gain.setTargetAtTime(0.006+P*0.02,T,0.5);
+  const x=(Math.sin(T*2*Math.PI/26)+1)/2;   // 和弦缓慢交融
+  this.chA.gain.setTargetAtTime(0.9*(1-x)+0.1,T,0.8);
+  this.chB.gain.setTargetAtTime(0.9*x+0.1,T,0.8);
+};
+AUDIO.plink=function(n){
+  if(!this.started||this.muted) return;
+  const P=[220,261.63,329.63,392,440,523.25,659.25];
+  const C=this.ctx,T=C.currentTime;
+  const o=C.createOscillator(); o.type='sine';
+  o.frequency.value=P[(n!=null?n:Math.floor(Math.random()*P.length))%P.length]*2;
+  const g=C.createGain(); g.gain.setValueAtTime(0,T);
+  g.gain.linearRampToValueAtTime(0.09,T+0.012);
+  g.gain.exponentialRampToValueAtTime(0.0001,T+1.7);
+  o.connect(g); g.connect(this.bus); o.start(T); o.stop(T+1.8);
+};
+AUDIO.swell=function(){
+  if(!this.started||this.muted) return;
+  const C=this.ctx,T=C.currentTime;
+  const o=C.createOscillator(); o.type='triangle'; o.frequency.value=55;
+  const g=C.createGain(); g.gain.setValueAtTime(0,T);
+  g.gain.linearRampToValueAtTime(0.22,T+1.6);
+  g.gain.exponentialRampToValueAtTime(0.0001,T+5);
+  o.connect(g); g.connect(this.master); o.start(T); o.stop(T+5.2);
+};
+AUDIO.toggle=function(){
+  if(!this.started) return;
+  this.muted=!this.muted;
+  this.master.gain.setTargetAtTime(this.muted?0:this.vol,this.ctx.currentTime,0.3);
+  document.getElementById('soundToggle').classList.toggle('muted',this.muted);
+};
+document.getElementById('soundToggle').addEventListener('click',()=>AUDIO.toggle());
+
+/* ================= 序章:一粒种子的旅程(滚动叙事) =================
+   封面(光种) → 词语光尘涌入 → 潜入地下·根系蔓延 → 破土·茎叶向上
+   → 全屏绽放 → 拉远·千株原野 → 溶解落进真实的花园。 */
+const IPLOCK=QS.has('ip')?parseFloat(QS.get('ip')):null;   // ?ip=0.5 锁定进度截图用
+const REDUCED=matchMedia('(prefers-reduced-motion: reduce)').matches;   // 晕动症用户直接进花园
+const SHOW_INTRO = QS.get('intro')==='1' || IPLOCK!=null ||
+  (QS.get('intro')!=='0' && !REDUCED && !QS.has('warm') && !QS.has('focus'));
+const INTRO={active:false,p:0,gate:false,ended:false};
+(function(){
+  const el=document.getElementById('intro');
+  if(!SHOW_INTRO){ el.style.display='none'; return; }
+  const icv=document.getElementById('introCv'), ic=icv.getContext('2d');
+  const cover=document.getElementById('cover');
+  let iTarget=0, touchY=null;   // 序章进度由滚轮/触摸直接累积驱动，不依赖任何滚动容器
+  const heroHue=()=> (plants[0]&&plants[0].hue)||317;
+  const HERO_Z=1.02, HERO_H=118;                        // 原野主花的景深与身高
+  const fieldBaseY=z=>iH*(0.72+z*0.14);                 // 原野地平线:z 越大离得越近、站得越低
+  const heroBudY=()=>fieldBaseY(HERO_Z)-HERO_H;         // 主花花头位置:绽放的落点必须与它像素对齐
+  let iW=0,iH=0, glyphs=[], rootSegs=[], grit=[], iStars=[], field=[], pulses=[],
+      shocks=[], bloomSpores=[], landRings=[], lastScene=-1, raf=0;
+
+  function isize(){
+    iW=innerWidth; iH=innerHeight;
+    icv.width=iW*DPR; icv.height=iH*DPR; ic.setTransform(DPR,0,0,DPR,0,0);
+    build();
+  }
+  function build(){
+    const rnd=mulberry32(7100);
+    // 词语光尘:论文里的词，漂在虚空
+    const WORDS='attention 卷积 gradient 记忆 vision 损失 language 蛋白质 neuron 梯度 token 特征 diffusion 网络 embedding 池化 transformer 反向传播'.split(' ');
+    glyphs=[];
+    for(let i=0;i<170;i++){ const a=rnd()*6.283, r=(0.18+rnd()*0.75)*Math.hypot(iW,iH)*0.5;
+      glyphs.push({w:WORDS[Math.floor(rnd()*WORDS.length)], a, r,
+                   z:0.5+rnd()*0.9, ph:rnd()*6.283, sp:(rnd()-0.5)*0.00012}); }
+    // 根系:从画面上方的种子往下递归生长
+    rootSegs=[]; let maxT=0;
+    (function grow(x,y,ang,d,t0){
+      if(d>7||y>iH*1.05) return;
+      const len=iH*0.085*(1-d*0.075);
+      const x2=x+Math.cos(ang)*len, y2=y+Math.sin(ang)*len, t1=t0+1;
+      rootSegs.push({x,y,x2,y2,d,t0,t1}); maxT=Math.max(maxT,t1);
+      const n=d<2?2:(rnd()<0.72?2:1);
+      for(let k=0;k<n;k++)
+        grow(x2,y2, ang+(rnd()-0.5)*0.9+(k?0.42:-0.42)*(d<2?1:0.6), d+1, t1);
+    })(iW/2, iH*0.14, Math.PI/2, 0, 0);
+    for(const s of rootSegs){ s.t0/=maxT; s.t1/=maxT; }
+    pulses=[]; for(let i=0;i<14;i++) pulses.push({seg:Math.floor(rnd()*rootSegs.length),u:rnd(),sp:0.004+rnd()*0.008});
+    grit=[]; for(let i=0;i<150;i++) grit.push({x:rnd()*iW,y:rnd()*iH,z:0.3+rnd()*0.9,r:0.5+rnd()*1.1});
+    iStars=[]; for(let i=0;i<170;i++) iStars.push({x:rnd()*iW,y:rnd()*iH*0.6,r:0.4+rnd()*1.2,ph:rnd()*6.283});
+    // 原野:一百株微缩花。大花落地处是第一株(主花),其余从它开始向两侧涟漪般苏醒
+    field=[{xf:0.5, z:HERO_Z, hue:heroHue(), h:HERO_H, st:0, ph:0.4, orb:false, pet:9}];
+    const PAL=[183,263,317,203,152,47];
+    for(let i=0;i<109;i++){ const z=0.45+rnd()*0.85, xf=rnd();
+      field.push({xf, z, hue:PAL[Math.floor(rnd()*PAL.length)]+(rnd()-0.5)*12,
+                  h:(40+rnd()*90)*z, st:Math.abs(xf-0.5)+rnd()*0.22, ph:rnd()*6.283,
+                  orb:rnd()<0.25, pet:5+Math.floor(rnd()*4)}); }
+    field.sort((a,b)=>a.z-b.z);                        // 远的先画、近的压前:原野有了纵深
+  }
+  const win=(p,a,b,f)=>{ f=f||0.04;
+    if(p<a-f||p>b+f) return 0;
+    if(p<a) return smooth((p-(a-f))/f);
+    if(p>b) return 1-smooth((p-b)/f);
+    return 1; };
+  // 花苞锚点:第三幕(镜头推近)与第四幕(绽放)共用同一坐标系——
+  // 苞在哪儿，花就从哪儿开，两幕之间没有一个像素的跳变(匹配剪辑)
+  function budAnchor(t,P){
+    const push=smooth(clamp((P-0.585)/0.075,0,1));      // 推镜进度:苞移向画心，茎滑出画外
+    const sway=Math.sin(t*0.0009)*iW*0.008*(1-push);    // 推近时茎渐渐屏息，不再摇曳
+    const bx=iW/2+Math.sin(2.4)*iW*0.02+sway, by=iH*0.2;
+    return {push, sway, bx, by,
+            x:lerp(bx,iW/2,push), y:lerp(by,iH*0.43,push), z:1+push*1.15};
+  }
+
+  /* —— 第一幕:虚空·光种·词语光尘 —— */
+  function sceneSeed(t,P,A){
+    const q=clamp(P/0.17,0,1);
+    const drop=smooth(clamp((P-0.128)/0.05,0,1));       // 尾声:吸饱词语的种子，坠入大地
+    const sy=iH*0.46+drop*drop*iH*0.95;                 // 种子加速下坠
+    const wy=iH*0.46+drop*drop*iH*0.30;                 // 词尘只跟一小段:镜头在追种子，词被甩在身后
+    ic.save(); ic.globalAlpha=A;
+    ic.font='300 13px "Palatino","Songti SC",serif'; ic.textAlign='center';
+    for(const g of glyphs){
+      const pull=smooth(q)*0.92;                        // 滚动越深，越被种子吸入
+      const ang=g.a+t*g.sp+pull*2.2/(0.3+g.r/(iH*0.5)); // 越近，旋得越快——星环
+      const r=g.r*(1-pull);
+      let x=iW/2+Math.cos(ang)*r, y=wy+Math.sin(ang)*r*0.55;
+      const dm=Math.hypot(x-mouse.x,y-mouse.y);          // 光尘避开指尖
+      if(dm<110){ x+=(x-mouse.x)/dm*(110-dm)*0.5; y+=(y-mouse.y)/dm*(110-dm)*0.5; }
+      const tw=0.5+0.5*Math.sin(t*0.0012+g.ph);
+      let ga=(0.1+0.24*tw)*g.z*(0.55+pull*0.6);
+      if(P<0.2){                                        // 字排是神圣的:光尘避开标题与字幕的保护区
+        const px=(x-iW/2)/(iW*0.32), py=(y-iH*0.40)/(iH*0.17);
+        ga*=clamp(px*px+py*py,0,1);
+      }
+      ic.fillStyle=`rgba(175,200,240,${ga})`;
+      ic.save(); ic.translate(x,y); ic.scale(g.z*(0.7+pull*0.5),g.z*(0.7+pull*0.5));
+      ic.fillText(g.w,0,0); ic.restore();
+    }
+    // 光种:呼吸，并随吸入变亮
+    const R=(7+q*17)*(1+0.08*Math.sin(t*0.0021));
+    ic.globalCompositeOperation='lighter';
+    if(drop>0.02)                                       // 坠落的光尾:一串渐隐的光，不是硬线
+      for(let k=0;k<14;k++){ const u=k/14;
+        ic.fillStyle=`rgba(255,244,210,${(1-u)*(1-u)*0.3})`;
+        ic.beginPath(); ic.arc(iW/2,sy-u*drop*iH*0.45,2.6*(1-u*0.75),0,6.29); ic.fill(); }
+    const g2=ic.createRadialGradient(iW/2,sy,0,iW/2,sy,R*7);
+    g2.addColorStop(0,`rgba(255,246,215,${0.75+q*0.25})`);
+    g2.addColorStop(0.12,`rgba(210,230,255,${0.3+q*0.3})`);
+    g2.addColorStop(1,'transparent');
+    ic.fillStyle=g2; ic.beginPath(); ic.arc(iW/2,sy,R*7,0,6.29); ic.fill();
+    ic.restore(); ic.globalCompositeOperation='source-over';
+  }
+  /* —— 第二幕:地下·根系在黑暗中相连 —— */
+  function sceneRoots(t,P,A){
+    const q=clamp((P-0.17)/0.22,0,1);
+    ic.save(); ic.globalAlpha=A;
+    ic.translate(0,smooth(clamp((P-0.36)/0.08,0,1))*iH); // 幕尾镜头上升:整个地下世界向下退场
+    const par=(mouse.x-iW/2)*0.012;
+    for(const s of grit){                              // 沉降的土粒，微弱视差
+      const y=(s.y+q*iH*0.25*s.z)%iH;
+      ic.fillStyle=`rgba(120,140,170,${0.05+0.06*s.z})`;
+      ic.beginPath(); ic.arc(s.x+par*s.z,y,s.r,0,6.29); ic.fill();
+    }
+    const ox=iW/2, oy=iH*0.14, arr=clamp(q/0.14,0,1);  // 上一幕坠落的种子，从头顶落进土层
+    if(arr<1){
+      const yy=lerp(-iH*0.15,oy,smooth(arr));
+      ic.globalCompositeOperation='lighter';
+      for(let k=0;k<14;k++){ const u=k/14;                // 同款彗尾，和上一幕接续
+        ic.fillStyle=`rgba(255,244,210,${(1-u)*(1-u)*0.28})`;
+        ic.beginPath(); ic.arc(ox,yy-u*iH*0.2,2.4*(1-u*0.7),0,6.29); ic.fill(); }
+      const sg=ic.createRadialGradient(ox,yy,0,ox,yy,26);
+      sg.addColorStop(0,'rgba(255,246,215,.95)'); sg.addColorStop(1,'transparent');
+      ic.fillStyle=sg; ic.beginPath(); ic.arc(ox,yy,26,0,6.29); ic.fill();
+      ic.globalCompositeOperation='source-over';
+      if(arr>0.96&&!INTRO._landed){ INTRO._landed=1;   // 落地:一圈震波惊醒土壤
+        landRings.push({r:6,life:1},{r:2,life:1.3}); }
+    }
+    if(q<0.04) INTRO._landed=0;                        // 滚回去可再看一次
+    ic.globalCompositeOperation='lighter';
+    for(const s of landRings){ s.r+=iW*0.006; s.life-=0.02;
+      ic.strokeStyle=`rgba(210,235,255,${Math.min(1,s.life)*0.5})`; ic.lineWidth=1.5*s.life;
+      ic.beginPath(); ic.ellipse(ox,oy,s.r,s.r*0.42,0,0,6.29); ic.stroke(); }
+    landRings=landRings.filter(s=>s.life>0);
+    if(arr>=1){                                        // 种子的心光:根在黑暗里生长，光一直都在
+      const hb=0.6+0.25*Math.sin(t*0.002);
+      const hg=ic.createRadialGradient(ox,oy,0,ox,oy,30);
+      hg.addColorStop(0,`rgba(255,243,206,${0.8*hb})`); hg.addColorStop(1,'transparent');
+      ic.fillStyle=hg; ic.beginPath(); ic.arc(ox,oy,30,0,6.29); ic.fill();
+    }
+    ic.globalCompositeOperation='source-over';
+    const gq=smooth(q)*1.06;
+    ic.lineCap='round';
+    for(const s of rootSegs){
+      if(s.t0>=gq) continue;
+      const u=clamp((gq-s.t0)/(s.t1-s.t0),0,1);
+      const x2=lerp(s.x,s.x2,u), y2=lerp(s.y,s.y2,u);
+      const lum=62-s.d*5;
+      ic.strokeStyle=`hsla(188,65%,${lum}%,${0.6-s.d*0.055})`;
+      ic.lineWidth=Math.max(0.5,3.2-s.d*0.42);
+      ic.beginPath(); ic.moveTo(s.x+par*0.4,s.y); ic.lineTo(x2+par*0.4,y2); ic.stroke();
+      if(u<1){ ic.globalCompositeOperation='lighter';   // 生长的根尖发亮
+        ic.fillStyle=`hsla(185,90%,80%,.85)`;
+        ic.beginPath(); ic.arc(x2+par*0.4,y2,1.8,0,6.29); ic.fill();
+        ic.globalCompositeOperation='source-over'; }
+    }
+    ic.globalCompositeOperation='lighter';              // 信号脉冲沿根传递
+    for(const p of pulses){
+      const s=rootSegs[p.seg]; if(!s||s.t1>gq) continue;
+      p.u+=p.sp; if(p.u>1){ p.u=0; p.seg=Math.floor(Math.random()*rootSegs.length); continue; }
+      const x=lerp(s.x,s.x2,p.u)+par*0.4, y=lerp(s.y,s.y2,p.u);
+      const g3=ic.createRadialGradient(x,y,0,x,y,7);
+      g3.addColorStop(0,'rgba(200,255,245,.9)'); g3.addColorStop(1,'transparent');
+      ic.fillStyle=g3; ic.beginPath(); ic.arc(x,y,7,0,6.29); ic.fill();
+    }
+    ic.restore(); ic.globalCompositeOperation='source-over';
+  }
+  /* —— 第三幕:破土·茎叶向上 —— */
+  function sceneStem(t,P,A){
+    const q=clamp((P-0.415)/0.185,0,1);
+    ic.save(); ic.globalAlpha=A;
+    const an=budAnchor(t,P);                            // 幕尾推镜:苞被送到画心，茎滑出画外
+    ic.translate(an.x,an.y); ic.scale(an.z,an.z); ic.translate(-an.bx,-an.by);
+    const gq=smooth(q), sway=an.sway;
+    const x0=iW/2, y0=iH*0.98, topY=iH*0.2;
+    ic.fillStyle=`hsla(205,30%,52%,${0.09*gq})`;        // 土面月光:芽长在地上，不在虚空里
+    ic.beginPath(); ic.ellipse(x0,y0,iW*0.3,iH*0.028,0,0,6.29); ic.fill();
+    const pts=[]; const N=26;
+    for(let k=0;k<=N*gq;k++){ const u=k/N;
+      pts.push([x0+Math.sin(u*2.4)*iW*0.02+sway*u, lerp(y0,topY,u)]); }
+    if(pts.length>1){
+      // 月夜剪影:整段序章只有一种冷银蓝，唯一的暖色是种子的光
+      for(const pass of [[7,'hsla(176,24%,15%,.9)',0],[4,'hsla(180,30%,31%,.95)',0],
+                         [1.6,'hsla(192,62%,76%,.55)',16]]){
+        ic.strokeStyle=pass[1]; ic.lineWidth=pass[0]; ic.lineCap='round';
+        ic.shadowColor='hsla(194,75%,75%,.5)'; ic.shadowBlur=pass[2];
+        ic.beginPath(); ic.moveTo(pts[0][0],pts[0][1]);
+        for(const p of pts) ic.lineTo(p[0],p[1]);
+        ic.stroke(); ic.shadowBlur=0;
+      }
+      for(const lf of [[0.3,-1],[0.44,1],[0.58,-1],[0.7,1]]){        // 叶片逐片舒展
+        const ap=backOut(clamp((gq-lf[0])/0.12,0,1)); if(ap<=0.02) continue;
+        const idx=Math.min(Math.floor(lf[0]*N),pts.length-1);
+        const [lx,ly]=pts[idx];
+        const la=-Math.PI/2+lf[1]*(1.15-ap*0.15), L=iH*0.09*ap;
+        const ex=lx+Math.cos(la)*L, ey=ly+Math.sin(la)*L;
+        const nx=Math.cos(la+1.57)*L*0.3, ny=Math.sin(la+1.57)*L*0.3;
+        const lg=ic.createLinearGradient(lx,ly,ex,ey);
+        lg.addColorStop(0,'hsla(177,28%,15%,.9)'); lg.addColorStop(1,'hsla(189,46%,52%,.5)');
+        ic.fillStyle=lg;
+        ic.beginPath(); ic.moveTo(lx,ly);
+        ic.quadraticCurveTo(lx+(ex-lx)*0.5+nx,ly+(ey-ly)*0.5+ny,ex,ey);
+        ic.quadraticCurveTo(lx+(ex-lx)*0.5-nx,ly+(ey-ly)*0.5-ny,lx,ly); ic.fill();
+        ic.strokeStyle=`hsla(192,55%,72%,${0.3*ap})`; ic.lineWidth=0.8;   // 月光描出叶脉
+        ic.beginPath(); ic.moveTo(lx,ly);
+        ic.quadraticCurveTo(lx+(ex-lx)*0.5+nx*0.25,ly+(ey-ly)*0.5+ny*0.25,ex,ey); ic.stroke();
+      }
+      const [tx2,ty2]=pts[pts.length-1];
+      ic.globalCompositeOperation='lighter';
+      if(gq<0.85){                                       // 种子的暖光，正沿着茎往上爬
+        const tg=ic.createRadialGradient(tx2,ty2,0,tx2,ty2,10);
+        tg.addColorStop(0,'rgba(255,243,206,.8)'); tg.addColorStop(1,'transparent');
+        ic.fillStyle=tg; ic.beginPath(); ic.arc(tx2,ty2,10,0,6.29); ic.fill();
+      }
+      if(gq>0.82){                                       // 爬到顶，凝成花苞
+        const bs=(gq-0.82)/0.18;
+        const bg=ic.createRadialGradient(tx2,ty2,0,tx2,ty2,26*bs);
+        bg.addColorStop(0,`rgba(255,243,206,${0.9*bs})`); bg.addColorStop(1,'transparent');
+        ic.fillStyle=bg; ic.beginPath(); ic.arc(tx2,ty2,26*bs,0,6.29); ic.fill();
+      }
+      ic.globalCompositeOperation='source-over';
+    }
+    ic.globalCompositeOperation='lighter';               // 上升的光尘
+    for(let k=0;k<26;k++){ const u=(t*0.00004*(1+k%5*0.22)+k*0.13)%1;
+      ic.fillStyle=`hsla(196,55%,82%,${(1-u)*0.26*gq})`;
+      ic.beginPath();
+      ic.arc(iW/2+Math.sin(k*37.7+u*5)*iW*0.16, iH-u*iH*0.9, 1.2,0,6.29); ic.fill(); }
+    ic.restore(); ic.globalCompositeOperation='source-over';
+  }
+  /* —— 第四幕:全屏绽放 —— */
+  function sceneBloom(t,P,A){
+    const q=clamp((P-0.60)/0.19,0,1), hue=heroHue();
+    ic.save(); ic.globalAlpha=A;
+    const an=budAnchor(t,P);                       // 花心=花苞锚点:从苞里开出来，零跳变
+    const land=smooth(clamp((P-0.765)/0.06,0,1));  // 尾声拉远:花缩回远方，落成原野上的第一株
+    const heroY=heroBudY();                        // 与原野主花的花头位置精确对齐(共享常量)
+    const cx=lerp(an.x,iW/2,land), cy=lerp(an.y,heroY,land);
+    const grow=backOut(smooth(q));                 // 带一点回弹的开放
+    const R=(26+(Math.min(iW,iH)*0.30-26)*grow)*(1-land*0.9);  // 从苞光的 26px 长起
+    ic.globalCompositeOperation='lighter';
+    // 整段序章是单色的月夜——花是银白的，落地生根的一瞬，才染上它自己的颜色
+    const tint=k0=>lerp(k0,hue,land), sat=lerp(46,80,land);
+    // 背景大柔光:整朵花的辉光，给画面深度与呼吸
+    const halo=ic.createRadialGradient(cx,cy,0,cx,cy,R*2.5);
+    halo.addColorStop(0,`hsla(${tint(215)},${sat}%,72%,${0.13*A})`);
+    halo.addColorStop(0.45,`hsla(${tint(215)},${sat}%,60%,${0.045*A})`);
+    halo.addColorStop(1,'transparent');
+    ic.fillStyle=halo; ic.beginPath(); ic.arc(cx,cy,R*2.5,0,6.29); ic.fill();
+    // 三层花瓣，由外到内错峰开放，瓣缘更亮——先画大的，小的压在上面
+    const rot=t*0.00003;
+    const layers=[{n:11,L:1.0, h0:228, off:0.00, wf:0.30, sq:0.94},
+                  {n:11,L:0.66,h0:212, off:0.10, wf:0.33, sq:0.90},
+                  {n:8, L:0.36,h0:198, off:0.20, wf:0.40, sq:0.86}];
+    for(const ring of layers){
+      const g0=clamp((grow-ring.off)/(1-ring.off),0,1);   // 外层稍晚绽开
+      if(g0<=0.01) continue;
+      const hh=tint(ring.h0);
+      const rL=R*ring.L*g0, ph=(ring.h0-212)*0.0175 + (ring.n%2?0.14:0);
+      for(let k=0;k<ring.n;k++){
+        const a=rot+ph+k*6.283/ring.n;
+        const tx=cx+Math.cos(a)*rL, ty=cy+Math.sin(a)*rL*ring.sq;
+        const wdt=rL*ring.wf;
+        const nx=Math.cos(a+1.57)*wdt, ny=Math.sin(a+1.57)*wdt;
+        const gr=ic.createLinearGradient(cx,cy,tx,ty);
+        gr.addColorStop(0,`hsla(${hh},${sat}%,78%,${0.035*A})`);
+        gr.addColorStop(0.72,`hsla(${hh},${sat}%,85%,${0.16*A})`);
+        gr.addColorStop(1,`hsla(${hh},${sat+14}%,95%,${0.38*A})`);
+        ic.fillStyle=gr;
+        ic.beginPath(); ic.moveTo(cx,cy);
+        ic.quadraticCurveTo(cx+(tx-cx)*0.5+nx, cy+(ty-cy)*0.5+ny, tx,ty);
+        ic.quadraticCurveTo(cx+(tx-cx)*0.5-nx, cy+(ty-cy)*0.5-ny, cx,cy);
+        ic.fill();
+      }
+    }
+    // 花心:种子那点暖光，一路爬到这里，成了心
+    const core=ic.createRadialGradient(cx,cy,0,cx,cy,R*0.5);
+    core.addColorStop(0,`rgba(255,246,214,${0.85*A})`);
+    core.addColorStop(0.4,`hsla(44,80%,76%,${0.22*A})`); core.addColorStop(1,'transparent');
+    ic.fillStyle=core; ic.beginPath(); ic.arc(cx,cy,R*0.5,0,6.29); ic.fill();
+    for(let k=0;k<9;k++){ const a=rot*3+k*0.698, rr=R*0.15*grow;   // 花蕊
+      ic.fillStyle=`hsla(46,90%,85%,${0.5*A})`;
+      ic.beginPath(); ic.arc(cx+Math.cos(a)*rr, cy+Math.sin(a)*rr*0.92, 2,0,6.29); ic.fill(); }
+    // 一记柔和的绽放冲击波(只放一次)
+    if(q>0.12 && !INTRO._bloomed){ INTRO._bloomed=1;
+      shocks.push({r:R*0.35,life:1}); shocks.push({r:R*0.18,life:1.25}); }
+    if(q<0.05) INTRO._bloomed=0;                    // 滚回去可再看一次
+    for(const s of shocks){ s.r+=9; s.life-=0.017;
+      ic.strokeStyle=`hsla(208,75%,88%,${s.life*0.32*A})`; ic.lineWidth=2*s.life;
+      ic.beginPath(); ic.arc(cx,cy,s.r,0,6.29); ic.stroke(); }
+    shocks=shocks.filter(s=>s.life>0);
+    // 缓缓升腾的花粉(轻，不喧宾夺主)
+    if(q>0.2&&Math.random()<0.35) bloomSpores.push({x:cx+(Math.random()-0.5)*R*0.7,
+      y:cy+(Math.random()-0.5)*R*0.7, vx:(Math.random()-0.5)*1.8, vy:-Math.random()*1.8-0.3, life:1});
+    for(const s of bloomSpores){ s.x+=s.vx; s.y+=s.vy; s.vy+=0.01; s.life-=0.009;
+      ic.fillStyle=`hsla(206,80%,90%,${s.life*0.5*A})`;
+      ic.beginPath(); ic.arc(s.x,s.y,1.3,0,6.29); ic.fill(); }
+    bloomSpores=bloomSpores.filter(s=>s.life>0);
+    ic.restore(); ic.globalCompositeOperation='source-over';
+  }
+  /* —— 第五幕:拉远·千株原野 —— */
+  function sceneField(t,P,A){
+    const q=clamp((P-0.77)/0.18,0,1);
+    ic.save(); ic.globalAlpha=A;
+    for(const s of iStars){ const tw=(0.4+0.6*Math.abs(Math.sin(t*0.0012+s.ph)))*q;
+      ic.fillStyle=`rgba(215,228,255,${tw*0.8})`;
+      ic.beginPath(); ic.arc(s.x,s.y,s.r,0,6.29); ic.fill(); }
+    // (不画月亮——尾声溶解时，让真实花园的月亮透上来，避免双月)
+    ic.globalCompositeOperation='lighter';
+    for(const f of field){                              // 一朵，变千朵
+      const ap=backOut(clamp((smooth(q)*1.5-f.st)/0.4,0,1)); if(ap<=0.02) continue;
+      const x=f.xf*iW+(mouse.x-iW/2)*-0.014*f.z, baseY=fieldBaseY(f.z);
+      const dm=0.35+0.65*clamp((f.z-0.45)/0.6,0,1);     // 远景更淡更朦胧:空气透视
+      const h=f.h*ap, sway=Math.sin(t*0.001+f.ph)*3;
+      ic.strokeStyle=`hsla(${f.hue},60%,55%,${0.5*f.z*dm})`; ic.lineWidth=1.1*f.z;
+      ic.beginPath(); ic.moveTo(x,baseY);
+      ic.quadraticCurveTo(x+sway*0.5,baseY-h*0.6,x+sway,baseY-h); ic.stroke();
+      const bx=x+sway, by=baseY-h, R2=(5+f.z*7)*ap;
+      if(f.orb){ ic.strokeStyle=`hsla(${f.hue},85%,75%,${0.5*ap*dm})`; ic.lineWidth=0.6;
+        for(let k=0;k<8;k++){ const a=k*0.785+t*0.0003;
+          ic.beginPath(); ic.moveTo(bx,by);
+          ic.lineTo(bx+Math.cos(a)*R2,by+Math.sin(a)*R2); ic.stroke(); } }
+      else for(let k=0;k<f.pet;k++){ const a=k*6.283/f.pet+f.ph;
+        ic.fillStyle=`hsla(${f.hue},85%,72%,${0.4*ap*dm})`;
+        ic.beginPath();
+        ic.ellipse(bx+Math.cos(a)*R2*0.6,by+Math.sin(a)*R2*0.5,R2*0.5,R2*0.22,a,0,6.29);
+        ic.fill(); }
+      const g4=ic.createRadialGradient(bx,by,0,bx,by,R2*1.6);
+      g4.addColorStop(0,`hsla(${f.hue},95%,82%,${0.55*ap*dm})`); g4.addColorStop(1,'transparent');
+      ic.fillStyle=g4; ic.beginPath(); ic.arc(bx,by,R2*1.6,0,6.29); ic.fill();
+    }
+    ic.restore(); ic.globalCompositeOperation='source-over';
+  }
+
+  /* —— 幕间:镜头升出土壤，地表从头顶掠过(与根系的下移共用同一进度) —— */
+  function sceneSurface(P){
+    const k=smooth(clamp((P-0.36)/0.08,0,1));
+    const ys=(k*1.18-0.18)*iH; if(ys>iH*1.02) return;
+    const yAt=x=>ys+Math.sin(x*0.005+2.1)*6;            // 微微起伏，像真的地面
+    ic.save(); ic.globalAlpha=smooth(clamp((P-0.32)/0.04,0,1));
+    // 土层:与夜空同族的深蓝，只比夜深一度——大地也是夜的一部分
+    const g=ic.createLinearGradient(0,ys,0,Math.min(iH,ys+iH*0.35));
+    g.addColorStop(0,'rgba(13,17,32,.8)'); g.addColorStop(1,'rgba(4,6,14,.55)');
+    ic.beginPath(); ic.moveTo(0,yAt(0));
+    for(let x=28;x<=iW+28;x+=28) ic.lineTo(x,yAt(x));
+    ic.lineTo(iW,iH+2); ic.lineTo(0,iH+2); ic.closePath();
+    ic.fillStyle=g; ic.fill();
+    ic.globalCompositeOperation='lighter';              // 地表一线月光 + 几点露光
+    ic.strokeStyle='rgba(150,190,225,.26)'; ic.lineWidth=1.2;
+    ic.beginPath(); ic.moveTo(0,yAt(0));
+    for(let x=28;x<=iW+28;x+=28) ic.lineTo(x,yAt(x));
+    ic.stroke();
+    for(let x=40;x<iW;x+=150){ const xx=x+(x*7)%53;
+      ic.fillStyle='rgba(215,238,255,.4)';
+      ic.beginPath(); ic.arc(xx,yAt(xx)-1,0.9,0,6.29); ic.fill(); }
+    ic.restore(); ic.globalCompositeOperation='source-over';
+  }
+
+  const caps=[['cap1',0.03,0.14],['cap2',0.20,0.345],['cap3',0.425,0.55],
+              ['cap4',0.635,0.75],['cap5',0.80,0.90],['cap6',0.945,1.02]];
+  function introFrame(t){
+    if(!INTRO.active) return;
+    if(QS.get('autoplay')==='1' && IPLOCK==null){ INTRO.gate=true; iTarget=clamp(iTarget+0.006,0,1); }
+    const target=IPLOCK!=null?IPLOCK:iTarget;
+    INTRO.p=IPLOCK!=null?target:lerp(INTRO.p,target,0.075);
+    const P=INTRO.p;
+    if(P>0.012&&!cover.classList.contains('gone')) passGate(false);
+    // 尾声:滚到千株原野之后，松开手，画面会自己、缓缓地溶回你的花园(不必再滚)
+    if(P>=0.9 && IPLOCK==null) iTarget=clamp(iTarget+0.0011,0,1);
+    // 你的花园从原野下浮现的一刻，让植物开始逐株破土——与原野的溶解交叠
+    if(P>=0.86 && !INTRO._sprouted){ INTRO._sprouted=1; const now=performance.now();
+      plants.forEach((p,i)=>{ p.entrance=0; p.entranceDelay=now+300+i*300; }); }
+    // 底色:虚空，尾声更宽更缓地淡出，让原野从容溶进花园
+    const fade=smooth(clamp(1-(P-0.9)/0.095,0,1));
+    ic.clearRect(0,0,iW,iH);
+    ic.save(); ic.globalAlpha=fade;
+    const bg=ic.createLinearGradient(0,0,0,iH);
+    bg.addColorStop(0,'#010208'); bg.addColorStop(0.6,'#030612'); bg.addColorStop(1,'#04081a');
+    ic.fillStyle=bg; ic.fillRect(0,0,iW,iH);
+    ic.restore();
+    ic.save(); ic.globalAlpha=fade;
+    const A1=win(P,0,0.155), A2=win(P,0.19,0.39,0.05), A3=win(P,0.41,0.60,0.05),
+          A4=win(P,0.615,0.775,0.05), A5=win(P,0.775,2,0.05);
+    try{                                  // 任何一幕出错都不再让整段动画停摆
+      if(P>0.32&&P<0.52) sceneSurface(P); // 幕间擦镜:先铺土层，根系画在它上面
+      if(A1>0.01) sceneSeed(t,P,A1);
+      if(A2>0.01) sceneRoots(t,P,A2);
+      if(A3>0.01) sceneStem(t,P,A3);
+      if(A4>0.01) sceneBloom(t,P,A4);
+      if(A5>0.01) sceneField(t,P,A5);
+    }catch(err){ if(!INTRO._warned){ INTRO._warned=1; console.error('序章绘制出错:',err); } }
+    ic.restore();
+    const gk=INTRO.gate?1:0;   // 进门(或锁定截图)后字幕才浮现，不与封面标题打架
+    for(const [id,a,b] of caps){
+      const kk=win(P,a,b,0.03), e=document.getElementById(id);
+      e.style.opacity=kk*kk*(id==='cap6'?1:fade)*gk;   // 平方衰减:残影干脆地熄灭，不留叠字
+      e.style.setProperty('--dy',((1-kk)*14)+'px');    // 字幕浮升入画
+      e.style.filter=kk>0.98?'none':`blur(${(1-kk)*3}px)`;   // 由失焦到聚焦，像睁开眼
+    }
+    document.getElementById('scrollHint').classList.toggle('on',INTRO.gate&&P<0.04);
+    // 音乐随场景推进
+    AUDIO.update(P);
+    const scene=P<0.18?0:P<0.4?1:P<0.6?2:P<0.78?3:P<0.94?4:5;
+    if(scene!==lastScene){
+      if(lastScene>=0){ AUDIO.plink(scene*2%7); setTimeout(()=>AUDIO.plink((scene*2+2)%7),200); }
+      if(scene===3) AUDIO.swell();
+      lastScene=scene;
+    }
+    if(P>=0.985&&IPLOCK==null) endIntro();
+    else raf=requestAnimationFrame(introFrame);
+  }
+  function passGate(withSound){
+    if(withSound) AUDIO.init();
+    cover.classList.add('gone'); INTRO.gate=true;
+    setTimeout(()=>{ cover.style.display='none'; },1200);   // 彻底移除，别再挡住滚动
+  }
+  function endIntro(){
+    if(INTRO.ended) return; INTRO.ended=true; INTRO.active=false;
+    cancelAnimationFrame(raf);
+    el.classList.add('done');
+    setTimeout(()=>el.style.display='none',1400);
+    document.body.classList.add('ready');
+    if(!INTRO._sprouted){ INTRO._sprouted=1; const now=performance.now();   // 跳过序章时也要触发破土
+      plants.forEach((p,i)=>{ p.entrance=0; p.entranceDelay=now+300+i*300; }); }
+    if(AUDIO.started){ AUDIO.vol=0.45;                  // 音乐退为花园的环境声
+      if(!AUDIO.muted) AUDIO.master.gain.setTargetAtTime(0.45,AUDIO.ctx.currentTime,1.2);
+      AUDIO.filter.frequency.setTargetAtTime(1500,AUDIO.ctx.currentTime,1); }
+  }
+  INTRO.start=function(){
+    INTRO.active=true; isize();
+    if(IPLOCK!=null){ cover.style.display='none'; INTRO.gate=true; }
+    addEventListener('resize',isize);
+    document.getElementById('doorSound').addEventListener('click',()=>passGate(true));
+    document.getElementById('doorSilent').addEventListener('click',()=>passGate(false));
+    document.getElementById('skipIntro').addEventListener('click',()=>endIntro());
+    addEventListener('keydown',e=>{ if(!INTRO.active) return;   // 键盘也是一等公民
+      if(e.key==='Escape') return endIntro();
+      const fwd=['ArrowDown','PageDown',' ','Enter','ArrowRight'].includes(e.key);
+      const back=['ArrowUp','PageUp','ArrowLeft'].includes(e.key);
+      if(!fwd&&!back) return;
+      e.preventDefault();
+      if(!INTRO.gate){ if(fwd) passGate(false); return; }   // 封面前:回车/空格即进门
+      iTarget=clamp(iTarget+(fwd?0.055:-0.055),0,1);
+      document.getElementById('introBar').style.width=(iTarget*100)+'%';
+    });
+    // 全窗口滚动劫持:无论鼠标在哪、无论上面盖着什么，都能推进序章
+    addEventListener('wheel',e=>{ if(!INTRO.active) return; e.preventDefault();
+      iTarget=clamp(iTarget+e.deltaY*0.00024,0,1);
+      document.getElementById('introBar').style.width=(iTarget*100)+'%';  // 直接反映输入，渲染崩了也会动
+    },{passive:false});
+    addEventListener('touchstart',e=>{ touchY=e.touches[0].clientY; },{passive:true});
+    addEventListener('touchmove',e=>{ if(!INTRO.active||touchY==null) return; e.preventDefault();
+      const y=e.touches[0].clientY; iTarget=clamp(iTarget+(touchY-y)*0.0016,0,1); touchY=y;
+    },{passive:false});
+    requestAnimationFrame(introFrame);
+  };
+  INTRO.end=endIntro;
+})();
+
 /* ================= 主循环 ================= */
 let last=0;
 function frame(t){
+  if(INTRO.active && INTRO.p<0.86){ last=t; requestAnimationFrame(frame); return; }   // 序章期间让位
   const dt=Math.min(50,t-last); last=t; frameN++;
-  ENV=envAt(hourNow());
+  ENV=envAt(envHour());
   wind=Math.max(0.25,wind*0.985);
   const reading=reader.classList.contains('on');
-  if(!reading) PARX=lantern.x-W/2;   // 裸眼3D:阅读时冻结视差,画面稳住
+  if(!reading) PARX=lantern.x-W/2;   // 裸眼3D:阅读时冻结视差，画面稳住
   // 相机缓动;俯冲时持续锁定英雄花(任它摇曳生长都居中),否则回到屏幕中心(兼容 resize)
   if(cam.on && specPlant){ cam.tcx=specPlant.tip.x; cam.tcy=specPlant.tip.y; }
   else { cam.tcx=W/2; cam.tcy=H/2; cam.ts=1; }
@@ -1671,7 +2353,7 @@ function frame(t){
   cam.s=lerp(cam.s,cam.ts,0.085);
   camP=clamp((cam.s-1)/(DIVE-1),0,1);
   ctx.clearRect(0,0,W,H);
-  drawSky(t);                        // 天空铺满全屏(在相机外,缩放也不留缝)
+  drawSky(t);                        // 天空铺满全屏(在相机外，缩放也不留缝)
   ctx.save();                        // ↓ 世界层进入相机:俯冲时整座花园被推近
   ctx.translate(W/2,H/2); ctx.scale(cam.s,cam.s); ctx.translate(-cam.cx,-cam.cy);
   drawCelestial(t);
@@ -1681,6 +2363,10 @@ function frame(t){
   drawGround();
   drawBlades(t);
   drawFlora(t,1);          // 中层草甸
+  NAMEP=null;
+  { let nd=170;            // 你走近谁，谁才亮出名牌——提灯的礼貌
+    for(const p of plants){ const d=Math.hypot(p.tip.x-lantern.x,p.tip.y-lantern.y);
+      if(d<nd){ nd=d; NAMEP=p; } } }
   for(const p of plants) drawPlant(p,t);
   drawBursts();            // 阶段突破的光环冲击波
   drawBees(t);
@@ -1693,15 +2379,16 @@ function frame(t){
   drawParticles();
   drawFog(t);
   ctx.restore();                     // ↑ 世界层结束
-  drawLantern(t);                    // 提灯在屏幕空间,俯冲时淡出
+  drawLantern(t);                    // 提灯在屏幕空间，俯冲时淡出
   updateInk();
   requestAnimationFrame(frame);
 }
 
-ENV=envAt(hourNow());
+ENV=envAt(envHour());
 resize(); buildBlades(); buildFlora(); buildClouds(); initPlants(); initParticles(); initAnimals(); initHud();
 requestAnimationFrame(t=>{ last=t; frame(t); });
-requestAnimationFrame(()=>document.body.classList.add('ready'));
+if(SHOW_INTRO) INTRO.start();
+else requestAnimationFrame(()=>document.body.classList.add('ready'));
 
 // ?focus=N 直开标本页(截图/分享用)
 if(QS.has('focus') && plants.length){
