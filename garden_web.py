@@ -398,6 +398,7 @@ TEMPLATE = r"""<!DOCTYPE html>
              color: rgba(150,175,215,.55); }
   .cap.center { left: 50%; top: 44%; transform: translate(-50%,-50%) translateY(var(--dy,0px)); text-align: center; }
   .cap.left { left: 8vw; bottom: 17vh; transform: translateY(var(--dy,0px)); }
+  #cap5 { bottom: 30vh; }   /* 尾声这幕脚下是千株星花,落版字要站在花丛之上 */
   .cap.right { right: 8vw; bottom: 19vh; text-align: right; transform: translateY(var(--dy,0px)); }
   .cap.lower { left: 50%; bottom: 13vh; transform: translateX(-50%) translateY(var(--dy,0px)); text-align: center; }
   .cinebar { position: fixed; left: 0; right: 0; height: 5.5vh; background: #010309; z-index: 4;
@@ -518,8 +519,8 @@ TEMPLATE = r"""<!DOCTYPE html>
   <div class="cinebar t"></div><div class="cinebar b"></div>
   <div class="cap center" id="cap1"><div class="zh">每一次阅读，都始于一粒种子<br>一个词，一点光</div><div class="en">EVERY READING BEGINS WITH A SEED</div></div>
   <div class="cap left"   id="cap2"><div class="zh">理解在看不见的地方扎根<br>像根，在黑暗中彼此相连</div><div class="en">ROOTS GROW IN THE DARK</div></div>
-  <div class="cap right"  id="cap3"><div class="zh">一篇论文，几瓣月色<br>每晚读一瓣，它便向上生长一截</div><div class="en">PETAL BY PETAL, NIGHT BY NIGHT</div></div>
-  <div class="cap lower" id="cap4"><div class="zh">读完最后一瓣的那个夜晚，它开了</div><div class="en">AND ONE NIGHT, IT BLOOMS</div></div>
+  <div class="cap right"  id="cap3"><div class="zh">一篇论文，几瓣月色<br>每读一次，它便向上生长</div><div class="en">PETAL BY PETAL, NIGHT BY NIGHT</div></div>
+  <div class="cap lower" id="cap4"><div class="zh">直到知识滋养了花</div><div class="en">AND ONE NIGHT, IT BLOOMS</div></div>
   <div class="cap left"   id="cap5"><div class="zh">你读过的每一篇，都没有消失<br>一篇，一株</div><div class="en">NOTHING YOU READ IS LOST</div></div>
   <div class="cap center" id="cap6"><div class="zh">欢迎回到你的花园</div><div class="en">WELCOME TO YOUR GARDEN</div></div>
   <div id="cover">
@@ -2281,8 +2282,10 @@ const INTRO={active:false,p:0,gate:false,ended:false};
     const gk=INTRO.gate?1:0;   // 进门(或锁定截图)后字幕才浮现，不与封面标题打架
     for(const [id,a,b] of caps){
       const kk=win(P,a,b,0.03), e=document.getElementById(id);
+      const ph=clamp((P-(a-0.03))/(b-a+0.06),0,1);     // 0→1 穿过这一幕
+      const out=P>b?smooth(Math.min((P-b)/0.03,1)):0;  // 谢幕专属:淡出的同时明确地向上飘走
       e.style.opacity=kk*kk*(id==='cap6'?1:fade)*gk;   // 平方衰减:残影干脆地熄灭，不留叠字
-      e.style.setProperty('--dy',((1-kk)*14)+'px');    // 字幕浮升入画
+      e.style.setProperty('--dy',(14-ph*48-out*40)+'px');  // 自下浮起,随滚动一路上升,谢幕时飘离画面
       e.style.filter=kk>0.98?'none':`blur(${(1-kk)*3}px)`;   // 由失焦到聚焦，像睁开眼
     }
     document.getElementById('scrollHint').classList.toggle('on',INTRO.gate&&P<0.04);
