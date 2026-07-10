@@ -51,11 +51,19 @@ def load_plants():
                 words.pop()
             title = " ".join(words).rstrip(" -–—·:,") + "…"
         title = re.sub(r"(\w)- ", r"\1: ", title)   # 文件名里 ":" 曾被存成 "- ",还原它
-        ts = os.path.getctime(path)
+        # 种下日期读图鉴里的"种下于"——文件系统时间靠不住:
+        # 别人 git clone 之后,所有文件的 ctime 都是克隆那一刻,时间线会全体坍缩成同一天
+        m = re.search(r"种下于\s*(\d{4}-\d{2}-\d{2})", md)
+        if m:
+            day = m.group(1)
+            ts = datetime.datetime.fromisoformat(day).timestamp()
+        else:
+            ts = os.path.getmtime(path)
+            day = datetime.date.fromtimestamp(ts).isoformat()
         plants.append({
             "title": title,
             "file": fname,
-            "date": datetime.date.fromtimestamp(ts).isoformat(),
+            "date": day,
             "ts": int(ts * 1000),
             "md": md,
         })

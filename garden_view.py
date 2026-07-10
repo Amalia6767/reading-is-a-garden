@@ -1,8 +1,16 @@
 # garden_view.py —— 逛花园:扫描所有植物,生成一个能在 VSCode 里点开逛的首页
-import os
+import os, re
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 GARDEN = os.path.join(HERE, "garden")
+
+
+def planted_on(fname):
+    """一株植物的种下日期:读图鉴里的"种下于"(文件系统时间在 git clone 后会坍缩,不可信)。"""
+    path = os.path.join(GARDEN, fname)
+    with open(path, encoding="utf-8") as f:
+        m = re.search(r"种下于\s*(\d{4}-\d{2}-\d{2})", f.read(2000))
+    return m.group(1) if m else "9999-99-99"
 
 # 🌱 你的审美主场:每株植物按"读的先后"配一个生长阶段图标。
 #    想改图标、想加更多阶段、想换成花 🌷🌻🌺,都在这一行改——这是你的花园你做主。
@@ -13,9 +21,9 @@ def grow_garden_index():
         print("🈳 花园还是空的,先去读一篇论文吧!")
         return
 
-    # 扫描所有植物(md 文件),按创建时间排序 = 按你阅读的先后
+    # 扫描所有植物(md 文件),按种下日期排序 = 按你阅读的先后(同日按文件名)
     plants = [f for f in os.listdir(GARDEN) if f.endswith(".md") and f != "花园.md"]
-    plants.sort(key=lambda f: os.path.getctime(os.path.join(GARDEN, f)))
+    plants.sort(key=lambda f: (planted_on(f), f))
 
     # 拼出首页内容
     lines = [
