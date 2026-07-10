@@ -17,8 +17,14 @@ GARDEN_DIR = os.path.join(HERE, "garden")
 MEMORY_PATH = os.path.join(HERE, "memory.json")
 LOGS_DIR = os.path.join(HERE, "logs")
 
-BITE_CHARS = 3000    # 一小口 ≈ 3000 字。Duolingo 从不让你一天学完一门语言。
-MAX_BITES = 6        # 再长的论文也最多切 6 口(口太多会让"读完一篇"遥遥无期)
+BITE_CHARS = 3000        # 中文一小口 ≈ 3000 字。Duolingo 从不让你一天学完一门语言。
+BITE_CHARS_LATIN = 8000  # 英文同样的阅读时长要更多字符(词长 + 讲解才是读者真正读的东西)
+MAX_BITES = 6            # 一般论文最多切 6 口(口太多会让"读完一篇"遥遥无期)
+BITE_HARD_CHARS = 20000  # 但单口尽量不超过 2 万字符——怪兽论文宁可多切几晚
+MAX_BITES_MONSTER = 12   # 瓣数的绝对上限:LeNet 这样的 43 页巨著,12 晚读完是诚实的
+
+HEALTH_MIN_RATIO = 0.30  # 提取文本可读率低于三成 = 文字层损坏,拒绝硬讲
+HEALTH_MIN_CHARS = 2000  # 可读内容少于这个数,同样不够园丁诚实开讲
 
 
 # ---------------------------------------------------------------------------
@@ -35,8 +41,8 @@ def extract_text(path):
         return f.read()
 
 
-def get_seed_text(fname):
-    """读种子的纯文本。第一次提取后缓存,以后每次切口位置都一致。"""
+def get_raw_text(fname):
+    """读种子的原始纯文本。第一次提取后缓存,以后每次切口位置都一致。"""
     os.makedirs(TEXTS, exist_ok=True)
     cache = os.path.join(TEXTS, os.path.splitext(fname)[0] + ".txt")
     if not os.path.exists(cache):
@@ -47,9 +53,52 @@ def get_seed_text(fname):
         return f.read()
 
 
+def _word_coverage(s):
+    """一行字里"像真单词的字母"占多大比例。真英文 ≈ 0.75+,字模损坏的乱码 ≈ 0.3-。"""
+    if any("一" <= c <= "鿿" for c in s):      # 含中文的行直接算健康
+        return 1.0
+    words = re.findall(r"[A-Za-z]{2,}", s)
+    return sum(len(w) for w in words) / max(1, len(s))
+
+
+def clean_text(raw):
+    """清洗提取文本:去控制字符、整行丢掉公式碎渣与乱字模、剪掉参考文献、收拢空白。
+    烧给模型的每个字符都该是园丁真能读的字——渣喂进去,费钱且逼它编。"""
+    text = "".join(c for c in raw if c.isprintable() or c in "\n\t")
+    kept = []
+    for line in text.split("\n"):
+        s = line.strip()
+        if not s:
+            kept.append("")
+        elif len(s) >= 3 and _word_coverage(s) >= 0.5:
+            kept.append(line)
+    text = "\n".join(kept)
+    m = re.search(r"\n\s*R\s?E\s?F\s?E\s?R\s?E\s?N\s?C\s?E\s?S?\s*\n", text, re.IGNORECASE)
+    if m and m.start() > len(text) * 0.5:               # 书目通常占去大段,园丁不讲书目
+        text = text[:m.start()]
+    text = re.sub(r"[ \t]{2,}", " ", text)
+    return re.sub(r"\n{3,}", "\n\n", text)
+
+
+def get_seed_text(fname):
+    """种子的可讲解文本 = 原始提取 → 清洗。"""
+    return clean_text(get_raw_text(fname))
+
+
+def seed_health(fname):
+    """播种体检:文字层还剩多少真内容。返回 (可读率, 可读字符数)。"""
+    raw = get_raw_text(fname)
+    cleaned = clean_text(raw)
+    return (len(cleaned) / max(1, len(raw)), len(cleaned))
+
+
 def split_bites(text):
     """把全文切成 3~6 个"一小口":在段落边界切,不把一句话拦腰斩断。"""
-    total = max(1, min(MAX_BITES, round(len(text) / BITE_CHARS)))
+    cjk = sum(1 for c in text[:20000] if "一" <= c <= "鿿") / max(1, len(text[:20000]))
+    target_chars = BITE_CHARS if cjk > 0.2 else BITE_CHARS_LATIN
+    total = max(1, min(MAX_BITES, round(len(text) / target_chars)))
+    need = -(-len(text) // BITE_HARD_CHARS)          # 单瓣压进 2 万字符所需的最少瓣数
+    total = min(MAX_BITES_MONSTER, max(total, need))
     paras = [p for p in text.split("\n\n") if p.strip()]
     if len(paras) < total * 2:                    # PDF 常常没有空行,退回按单换行切
         paras = [p for p in text.split("\n") if p.strip()]
@@ -64,7 +113,15 @@ def split_bites(text):
         else:
             cur = cur + "\n\n" + p if cur else p
     if cur: bites.append(cur)
-    return bites
+    result = []                                       # PDF 常把整页提成一行,巨段落会顶破口子——硬切兜底
+    for b in bites:
+        if len(b) > BITE_HARD_CHARS * 1.3:
+            n = -(-len(b) // BITE_HARD_CHARS)
+            size = len(b) // n + 1
+            result.extend(b[i:i + size] for i in range(0, len(b), size))
+        else:
+            result.append(b)
+    return result
 
 
 def load_memory():
@@ -114,6 +171,19 @@ def list_seeds():
 
 def plant_title(fname):
     return os.path.splitext(fname)[0][:40]
+
+
+def pick_seed(memory, seed_files):
+    """园丁规矩:先续读没读完的(别烂尾),再开最早播下的新种子。"""
+    st = memory.get("seeds", {})
+    for f in seed_files:
+        rec = st.get(f)
+        if rec and 0 < rec.get("done", 0) < rec.get("total", 0):
+            return f
+    for f in seed_files:
+        if st.get(f, {}).get("done", 0) == 0:
+            return f
+    return None
 
 
 def sow(src):
@@ -177,6 +247,10 @@ def tool_read_bite(s, fname):
     if rec and rec.get("done", 0) >= rec.get("total", 1) > 0:
         return {"error": f"《{plant_title(fname)}》已经整篇读完了,换一颗新种子"}
     bites = split_bites(get_seed_text(fname))
+    # 进度自愈:切法变了(清洗规则升级/换了同名的干净 PDF),按比例折算已读进度
+    if rec and rec.get("total") and rec["total"] != len(bites) and rec.get("done", 0) > 0:
+        rec["done"] = min(len(bites) - 1, round(rec["done"] * len(bites) / rec["total"]))
+        rec["total"] = len(bites)
     s.fname, s.bites_total = fname, len(bites)
     s.k = rec.get("done", 0) + 1
     s.explained, s.saved, s.quizzed = None, False, False

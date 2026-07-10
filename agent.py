@@ -187,18 +187,27 @@ def main():
             return
         print(f"🫘 已播种进种子箱: {tools.sow(src)}")
 
-    # 空箱/全读完:一行代码就能判断的事,不花一次 API(大脑留给值得想的事)
+    # 空箱/全读完/坏种子:一行代码就能判断的事,不花一次 API(大脑留给值得想的事)
     memory = tools.load_memory()
     seed_files = tools.list_seeds()
-    st = memory.get("seeds", {})
-    unread = [f for f in seed_files
-              if st.get(f, {}).get("done", 0) < st.get(f, {}).get("total", 1)]
-    if not unread:
+    fname = tools.pick_seed(memory, seed_files)
+    if fname is None:
         if seed_files:
             print("🌸 种子箱里的论文全都读完了!丢一篇新的进 seeds/ 吧。")
         else:
             print("🈳 种子箱是空的。把想读的论文(pdf/txt/md)丢进 seeds/ 文件夹,")
             print("   或者直接:python agent.py 论文路径")
+        return
+
+    # 播种体检:文字层坏掉的 PDF,任何提取器都救不了——园丁拒绝对着乱码硬编。
+    # 诚实是这座花园的地基:花开 = 真读完,前提是真的有字可读。
+    ratio, chars = tools.seed_health(fname)
+    if ratio < tools.HEALTH_MIN_RATIO or chars < tools.HEALTH_MIN_CHARS:
+        print(f"🩺 《{tools.plant_title(fname)}》的文字层损坏了:")
+        print(f"   提取出的内容里只有 {ratio:.0%} 是可读文字(约 {chars:,} 字符),其余是坏掉的字模乱码。")
+        print("   对着乱码讲解 = 逼园丁凭记忆编造,这违背\"花开 = 真读完\"的承诺,所以今晚不讲这篇。")
+        print("   👉 请换一份文字版 PDF(如 arXiv / 出版社官网重新下载,同名放回 seeds/ 即可,进度会自动折算),")
+        print("      或先用 OCR 工具处理后再播种。")
         return
 
     print("\n🌱 园丁上工了...\n")
