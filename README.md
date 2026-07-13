@@ -72,6 +72,7 @@ python3 -m venv .venv
 cp .env.example .env            # 编辑 .env，填入你的 DeepSeek key
 
 # 3 · 播种：把论文（PDF / TXT / Markdown）放进 seeds/ 文件夹
+#     或者让园丁替你上 arXiv 找一篇经典（见下方「找种子」）
 
 # 4 · 读今晚的一瓣
 .venv/bin/python agent.py       # 无需指定读哪篇——园丁替你决定，回车即读
@@ -81,6 +82,19 @@ cp .env.example .env            # 编辑 .env，填入你的 DeepSeek key
 ```
 
 园丁会自动挑选：先接着读没读完的那篇，读完了再开一颗新种子。你每天只需重复第 4 步。
+
+### 找种子 · 让园丁自己上 arXiv 找（可选）
+
+```bash
+# 一次性配置：paper-search-mcp 需要 Python ≥ 3.10，装在独立环境里
+python3.12 -m venv .venv-mcp
+.venv-mcp/bin/pip install paper-search-mcp
+
+# 之后随时——园丁会搜索、挑一篇最经典的、下载、体检、种进种子箱
+.venv/bin/python agent.py --find "扩散模型"
+```
+
+园丁通过一个**手写的 MCP 客户端**连上 `paper-search-mcp`，从它 57 件工具里只策展出「搜索 + 下载」两件。两道闸门守着诚信：**接地**——只种搜索真实命中的论文，绝不凭记忆编造 arXiv 编号（编号张冠李戴是模型的常见幻觉）；**体检**——文字层损坏的 PDF 挡在门外。
 
 ---
 
@@ -95,8 +109,9 @@ cp .env.example .env            # 编辑 .env，填入你的 DeepSeek key
 - **v0.5** — 开场序章「一粒种子的旅程」，花园入永夜 ·  已完成
 - **v0.6** — 费曼三问：读完一瓣，用你自己的话讲回来；每瓣都答住，植物盖上「真懂」印记 ·  已完成
 - **v0.7** — 园丁成为真正的 agent：大脑看状态、选工具、循环执行（手写循环 + function calling），每晚在 `logs/` 留一份可观测的流水账 ·  已完成
-- **接下来** — 植物档案结构化（frontmatter 身份证：标题 / 作者 / 年份 / 双语概念标签）
-- **再往后** — 花园 MCP server + 检索回忆（园丁能说出"你三周前读过的那篇讲过这个概念"）；LangGraph 双实现与对比复盘
+- **v0.8** — 园丁伸手够到外部世界：手写 MCP 客户端接上 `paper-search-mcp`，`--find` 让园丁自己上 arXiv 搜论文、下载、体检、种下；接地闸门挡住"凭记忆编造编号"的幻觉 ·  已完成
+- **接下来** — 植物档案结构化（frontmatter 身份证：标题 / 作者 / 年份 / 双语概念标签）；费曼评测体系（evals）
+- **再往后** — 花园 MCP server（把花园反向变成别人能插上的工具）+ 检索回忆（园丁能说出"你三周前读过的那篇讲过这个概念"）；LangGraph 双实现与对比复盘
 - **v1.0** — 浏览器原生：把一篇 PDF 直接拖进网页即可阅读；知识图谱式布局（主题相近的论文，花也开得相近）；美学层继续深化
 
 > 注：v0.2 曾做过随本地时间流转的完整昼夜，v0.5 起花园定格为永夜——会发光的花只属于黑暗。
@@ -106,6 +121,7 @@ cp .env.example .env            # 编辑 .env，填入你的 DeepSeek key
 ## 技术 · Under the hood
 
 - 一个**手写的 agent 循环**——不借框架，为的是先理解原理本身：大脑（DeepSeek function calling）看状态、选工具、执行、把结果喂回、再想，直到收工；六件工具（看箱 / 取瓣 / 入档 / 发问 / 记账 / 收工）在 `tools.py`，园丁的规矩写进 system prompt、由工具代码兜底
+- 一个**手写的 MCP 客户端**（`mcp_bridge.py`）——同样不借 SDK：起子进程、JSON-RPC 三步握手（initialize → tools/list → tools/call）、把外部工具翻译成 function calling 格式。接上 `paper-search-mcp` 让园丁能自己找论文
 - 每晚的运行在 `logs/` 留一行行 JSON 流水账：每次思考的 token、每次工具调用——大脑今晚怎么想的，翻账本就知道
 - Python · DeepSeek API（兼容 OpenAI 接口）· pypdf 解析
 - 整座花园是**一个不依赖任何外部库、无需构建、可离线运行的 HTML 文件**，由纯 JavaScript 与 Canvas 绘成

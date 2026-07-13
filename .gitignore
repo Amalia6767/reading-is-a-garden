@@ -21,6 +21,8 @@ e95fa0908a9dd6e4d178458f2bcd5c1f.jpg
 __pycache__/
 *.pyc
 .venv/
+# paper-search-mcp 的独立环境(需 Python≥3.10,与主项目 3.9 分开)
+.venv-mcp/
 
 # macOS 杂物
 .DS_Store

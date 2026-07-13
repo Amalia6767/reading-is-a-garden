@@ -179,6 +179,12 @@ def run_gardener(session):
 def main():
     os.makedirs(tools.SEEDS, exist_ok=True)
 
+    # 找种子:园丁自己上 arXiv 搜一篇经典下来(Step 4 客户端半场,独立的小循环)
+    if len(sys.argv) > 2 and sys.argv[1] == "--find":
+        import finder
+        finder.run_finder(" ".join(sys.argv[2:]).strip().strip("'\""), client)
+        return
+
     # 播种:带路径参数 = 把论文收进种子箱(用户的动作,确定性代码,不劳大脑)
     if len(sys.argv) > 1:
         src = sys.argv[1].strip().strip("'\"")

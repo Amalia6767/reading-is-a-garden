@@ -194,6 +194,29 @@ def sow(src):
     return os.path.basename(src)
 
 
+def health_of_path(path):
+    """体检任意一个 PDF/文本文件(还没进种子箱的下载件)。返回 (可读率, 可读字符数)。"""
+    raw = extract_text(path)
+    cleaned = clean_text(raw)
+    return (len(cleaned) / max(1, len(raw)), len(cleaned))
+
+
+def sow_checked(src, rename_to=None):
+    """带体检的播种:外部世界(MCP 下载)进种子箱的唯一闸口。
+    文字层坏掉的 PDF 挡在门外——诚信地基不因为"论文是自动搜来的"就松动。
+    返回 {"error": ...} 或 {"seeded": 文件名, "ratio": 可读率}。"""
+    ratio, chars = health_of_path(src)
+    if ratio < HEALTH_MIN_RATIO or chars < HEALTH_MIN_CHARS:
+        return {"error": f"这篇 PDF 文字层损坏(可读率仅 {ratio:.0%}),不收进种子箱——"
+                         f"换一篇,或找它的 HTML/OCR 版"}
+    name = rename_to or os.path.basename(src)
+    if not name.lower().endswith((".pdf", ".txt", ".md")):
+        name += ".pdf"
+    name = re.sub(r'[/\\:*?"<>|]', " ", name).strip()   # 论文标题常含非法文件名字符,洗掉
+    shutil.copy(src, os.path.join(SEEDS, name))
+    return {"seeded": name, "ratio": round(ratio, 2)}
+
+
 # ---------------------------------------------------------------------------
 # 会话状态:一晚一个,记录大脑做到了哪一步——工具靠它兜底
 # ---------------------------------------------------------------------------
