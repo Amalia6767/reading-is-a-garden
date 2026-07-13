@@ -154,12 +154,23 @@ def run_gardener(session):
             continue
 
         for c in calls:
+            # 工具执行的任何差错都变成"喂回给大脑的错误",绝不炸穿整晚——
+            # 循环的全部意义就是:错误是反馈,不是终点。(7/13 实测:大脑调 record_quiz
+            # 忘带 results 参数,老代码直接 TypeError 崩掉,读者答的三问全部蒸发)
+            fn = tools.DISPATCH.get(c["name"])
             try:
                 args = json.loads(c["args"] or "{}")
-            except json.JSONDecodeError:
-                args = {}
-            fn = tools.DISPATCH.get(c["name"])
-            result = fn(session, **args) if fn else {"error": f"没有这件工具:{c['name']}"}
+                if not isinstance(args, dict):
+                    raise ValueError("参数必须是 JSON 对象")
+                result = fn(session, **args) if fn else {"error": f"没有这件工具:{c['name']}"}
+            except (json.JSONDecodeError, ValueError) as e:
+                result = {"error": f"参数 JSON 没解析出来({e})。请把完整参数重新发一遍"}
+            except TypeError as e:
+                result = {"error": f"参数不完整或名字不对({e})。对照工具说明书补全后重调,"
+                                   f"例如 record_quiz 需要 results 数组,每题含 "
+                                   f"question/answer/verdict/comment/concept"}
+            except Exception as e:
+                result = {"error": f"工具执行出错({type(e).__name__}: {e})。可换个方式重试"}
             log.event("tool", turn=turn, name=c["name"],
                       ok="error" not in result, brief=str(result)[:120])
             messages.append({"role": "tool", "tool_call_id": c["id"],

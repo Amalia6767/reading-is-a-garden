@@ -96,14 +96,19 @@ def _register_hits(seen, data):
 
 
 def dispatch(bridge, seen, name, args):
-    if name == "plant_paper":
-        return plant_paper(bridge, seen, **args)
-    if name in CURATED:                              # 转发给外部 MCP server
-        r = bridge.call(name, args, timeout=120)
-        if name == "search_arxiv" and "data" in r:
-            _register_hits(seen, r["data"])           # 记下真实命中,建立接地账本
-        return {"text": r.get("text", ""), **({"error": r["error"]} if "error" in r else {})}
-    return {"error": f"没有这件工具:{name}"}
+    try:
+        if name == "plant_paper":
+            return plant_paper(bridge, seen, **args)
+        if name in CURATED:                          # 转发给外部 MCP server
+            r = bridge.call(name, args, timeout=120)
+            if name == "search_arxiv" and "data" in r:
+                _register_hits(seen, r["data"])       # 记下真实命中,建立接地账本
+            return {"text": r.get("text", ""), **({"error": r["error"]} if "error" in r else {})}
+        return {"error": f"没有这件工具:{name}"}
+    except TypeError as e:                           # 参数不齐是反馈,不是崩溃
+        return {"error": f"参数不完整或名字不对({e}),补全后重调"}
+    except Exception as e:
+        return {"error": f"工具执行出错({type(e).__name__}: {e}),可重试或换个方式"}
 
 
 def run_finder(topic, client, model="deepseek-chat"):
